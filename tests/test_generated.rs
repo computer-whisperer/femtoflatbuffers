@@ -280,6 +280,120 @@ impl core::fmt::Debug for NestingTest<'_> {
       ds.finish()
   }
 }
+pub enum ListTestOffset {}
+#[derive(Copy, Clone, PartialEq)]
+
+pub struct ListTest<'a> {
+  pub _tab: flatbuffers::Table<'a>,
+}
+
+impl<'a> flatbuffers::Follow<'a> for ListTest<'a> {
+  type Inner = ListTest<'a>;
+  #[inline]
+  unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+    Self { _tab: unsafe { flatbuffers::Table::new(buf, loc) } }
+  }
+}
+
+impl<'a> ListTest<'a> {
+  pub const VT_A: flatbuffers::VOffsetT = 4;
+  pub const VT_B: flatbuffers::VOffsetT = 6;
+
+  #[inline]
+  pub unsafe fn init_from_table(table: flatbuffers::Table<'a>) -> Self {
+    ListTest { _tab: table }
+  }
+  #[allow(unused_mut)]
+  pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: flatbuffers::Allocator + 'bldr>(
+    _fbb: &'mut_bldr mut flatbuffers::FlatBufferBuilder<'bldr, A>,
+    args: &'args ListTestArgs<'args>
+  ) -> flatbuffers::WIPOffset<ListTest<'bldr>> {
+    let mut builder = ListTestBuilder::new(_fbb);
+    if let Some(x) = args.b { builder.add_b(x); }
+    builder.add_a(args.a);
+    builder.finish()
+  }
+
+
+  #[inline]
+  pub fn a(&self) -> i32 {
+    // Safety:
+    // Created from valid Table for this object
+    // which contains a valid value in this slot
+    unsafe { self._tab.get::<i32>(ListTest::VT_A, Some(0)).unwrap()}
+  }
+  #[inline]
+  pub fn b(&self) -> Option<flatbuffers::Vector<'a, flatbuffers::ForwardsUOffset<Test<'a>>>> {
+    // Safety:
+    // Created from valid Table for this object
+    // which contains a valid value in this slot
+    unsafe { self._tab.get::<flatbuffers::ForwardsUOffset<flatbuffers::Vector<'a, flatbuffers::ForwardsUOffset<Test>>>>(ListTest::VT_B, None)}
+  }
+}
+
+impl flatbuffers::Verifiable for ListTest<'_> {
+  #[inline]
+  fn run_verifier(
+    v: &mut flatbuffers::Verifier, pos: usize
+  ) -> Result<(), flatbuffers::InvalidFlatbuffer> {
+    use self::flatbuffers::Verifiable;
+    v.visit_table(pos)?
+     .visit_field::<i32>("a", Self::VT_A, false)?
+     .visit_field::<flatbuffers::ForwardsUOffset<flatbuffers::Vector<'_, flatbuffers::ForwardsUOffset<Test>>>>("b", Self::VT_B, false)?
+     .finish();
+    Ok(())
+  }
+}
+pub struct ListTestArgs<'a> {
+    pub a: i32,
+    pub b: Option<flatbuffers::WIPOffset<flatbuffers::Vector<'a, flatbuffers::ForwardsUOffset<Test<'a>>>>>,
+}
+impl<'a> Default for ListTestArgs<'a> {
+  #[inline]
+  fn default() -> Self {
+    ListTestArgs {
+      a: 0,
+      b: None,
+    }
+  }
+}
+
+pub struct ListTestBuilder<'a: 'b, 'b, A: flatbuffers::Allocator + 'a> {
+  fbb_: &'b mut flatbuffers::FlatBufferBuilder<'a, A>,
+  start_: flatbuffers::WIPOffset<flatbuffers::TableUnfinishedWIPOffset>,
+}
+impl<'a: 'b, 'b, A: flatbuffers::Allocator + 'a> ListTestBuilder<'a, 'b, A> {
+  #[inline]
+  pub fn add_a(&mut self, a: i32) {
+    self.fbb_.push_slot::<i32>(ListTest::VT_A, a, 0);
+  }
+  #[inline]
+  pub fn add_b(&mut self, b: flatbuffers::WIPOffset<flatbuffers::Vector<'b , flatbuffers::ForwardsUOffset<Test<'b >>>>) {
+    self.fbb_.push_slot_always::<flatbuffers::WIPOffset<_>>(ListTest::VT_B, b);
+  }
+  #[inline]
+  pub fn new(_fbb: &'b mut flatbuffers::FlatBufferBuilder<'a, A>) -> ListTestBuilder<'a, 'b, A> {
+    let start = _fbb.start_table();
+    ListTestBuilder {
+      fbb_: _fbb,
+      start_: start,
+    }
+  }
+  #[inline]
+  pub fn finish(self) -> flatbuffers::WIPOffset<ListTest<'a>> {
+    let o = self.fbb_.end_table(self.start_);
+    flatbuffers::WIPOffset::new(o.value())
+  }
+}
+
+impl core::fmt::Debug for ListTest<'_> {
+  fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+    let mut ds = f.debug_struct("ListTest");
+      ds.field("a", &self.a());
+      ds.field("b", &self.b());
+      ds.finish()
+  }
+}
 #[inline]
 /// Verifies that a buffer of bytes contains a `Test`
 /// and returns it.

@@ -12,5 +12,9 @@ table NestingTest{
   c: Test;
 }
 
-root_type NestingTest;
+table ListTest{
+  a: int;
+  b: [Test];
+}
+
 root_type Test;
