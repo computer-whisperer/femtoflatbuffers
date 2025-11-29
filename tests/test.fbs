@@ -1,0 +1,9 @@
+namespace Test;
+
+table Test{
+  a: int;
+  b: int;
+  c: int;
+}
+
+root_type Test;

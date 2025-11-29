@@ -1,0 +1,14 @@
+[package]
+name = "femtoflatbuffers"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+femtoflatbuffers-derive = {path = "derive"}
+thiserror = "2.0.17"
+
+[dev-dependencies]
+flatbuffers = "25.9.0"
+
+[workspace]
+members = ["derive"]
