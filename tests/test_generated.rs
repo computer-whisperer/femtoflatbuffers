@@ -149,6 +149,137 @@ impl core::fmt::Debug for Test<'_> {
       ds.finish()
   }
 }
+pub enum NestingTestOffset {}
+#[derive(Copy, Clone, PartialEq)]
+
+pub struct NestingTest<'a> {
+  pub _tab: flatbuffers::Table<'a>,
+}
+
+impl<'a> flatbuffers::Follow<'a> for NestingTest<'a> {
+  type Inner = NestingTest<'a>;
+  #[inline]
+  unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+    Self { _tab: unsafe { flatbuffers::Table::new(buf, loc) } }
+  }
+}
+
+impl<'a> NestingTest<'a> {
+  pub const VT_A: flatbuffers::VOffsetT = 4;
+  pub const VT_B: flatbuffers::VOffsetT = 6;
+  pub const VT_C: flatbuffers::VOffsetT = 8;
+
+  #[inline]
+  pub unsafe fn init_from_table(table: flatbuffers::Table<'a>) -> Self {
+    NestingTest { _tab: table }
+  }
+  #[allow(unused_mut)]
+  pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: flatbuffers::Allocator + 'bldr>(
+    _fbb: &'mut_bldr mut flatbuffers::FlatBufferBuilder<'bldr, A>,
+    args: &'args NestingTestArgs<'args>
+  ) -> flatbuffers::WIPOffset<NestingTest<'bldr>> {
+    let mut builder = NestingTestBuilder::new(_fbb);
+    if let Some(x) = args.c { builder.add_c(x); }
+    builder.add_b(args.b);
+    builder.add_a(args.a);
+    builder.finish()
+  }
+
+
+  #[inline]
+  pub fn a(&self) -> i32 {
+    // Safety:
+    // Created from valid Table for this object
+    // which contains a valid value in this slot
+    unsafe { self._tab.get::<i32>(NestingTest::VT_A, Some(0)).unwrap()}
+  }
+  #[inline]
+  pub fn b(&self) -> i32 {
+    // Safety:
+    // Created from valid Table for this object
+    // which contains a valid value in this slot
+    unsafe { self._tab.get::<i32>(NestingTest::VT_B, Some(0)).unwrap()}
+  }
+  #[inline]
+  pub fn c(&self) -> Option<Test<'a>> {
+    // Safety:
+    // Created from valid Table for this object
+    // which contains a valid value in this slot
+    unsafe { self._tab.get::<flatbuffers::ForwardsUOffset<Test>>(NestingTest::VT_C, None)}
+  }
+}
+
+impl flatbuffers::Verifiable for NestingTest<'_> {
+  #[inline]
+  fn run_verifier(
+    v: &mut flatbuffers::Verifier, pos: usize
+  ) -> Result<(), flatbuffers::InvalidFlatbuffer> {
+    use self::flatbuffers::Verifiable;
+    v.visit_table(pos)?
+     .visit_field::<i32>("a", Self::VT_A, false)?
+     .visit_field::<i32>("b", Self::VT_B, false)?
+     .visit_field::<flatbuffers::ForwardsUOffset<Test>>("c", Self::VT_C, false)?
+     .finish();
+    Ok(())
+  }
+}
+pub struct NestingTestArgs<'a> {
+    pub a: i32,
+    pub b: i32,
+    pub c: Option<flatbuffers::WIPOffset<Test<'a>>>,
+}
+impl<'a> Default for NestingTestArgs<'a> {
+  #[inline]
+  fn default() -> Self {
+    NestingTestArgs {
+      a: 0,
+      b: 0,
+      c: None,
+    }
+  }
+}
+
+pub struct NestingTestBuilder<'a: 'b, 'b, A: flatbuffers::Allocator + 'a> {
+  fbb_: &'b mut flatbuffers::FlatBufferBuilder<'a, A>,
+  start_: flatbuffers::WIPOffset<flatbuffers::TableUnfinishedWIPOffset>,
+}
+impl<'a: 'b, 'b, A: flatbuffers::Allocator + 'a> NestingTestBuilder<'a, 'b, A> {
+  #[inline]
+  pub fn add_a(&mut self, a: i32) {
+    self.fbb_.push_slot::<i32>(NestingTest::VT_A, a, 0);
+  }
+  #[inline]
+  pub fn add_b(&mut self, b: i32) {
+    self.fbb_.push_slot::<i32>(NestingTest::VT_B, b, 0);
+  }
+  #[inline]
+  pub fn add_c(&mut self, c: flatbuffers::WIPOffset<Test<'b >>) {
+    self.fbb_.push_slot_always::<flatbuffers::WIPOffset<Test>>(NestingTest::VT_C, c);
+  }
+  #[inline]
+  pub fn new(_fbb: &'b mut flatbuffers::FlatBufferBuilder<'a, A>) -> NestingTestBuilder<'a, 'b, A> {
+    let start = _fbb.start_table();
+    NestingTestBuilder {
+      fbb_: _fbb,
+      start_: start,
+    }
+  }
+  #[inline]
+  pub fn finish(self) -> flatbuffers::WIPOffset<NestingTest<'a>> {
+    let o = self.fbb_.end_table(self.start_);
+    flatbuffers::WIPOffset::new(o.value())
+  }
+}
+
+impl core::fmt::Debug for NestingTest<'_> {
+  fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+    let mut ds = f.debug_struct("NestingTest");
+      ds.field("a", &self.a());
+      ds.field("b", &self.b());
+      ds.field("c", &self.c());
+      ds.finish()
+  }
+}
 #[inline]
 /// Verifies that a buffer of bytes contains a `Test`
 /// and returns it.

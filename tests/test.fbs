@@ -6,4 +6,11 @@ table Test{
   c: int;
 }
 
+table NestingTest{
+  a: int;
+  b: int;
+  c: Test;
+}
+
+root_type NestingTest;
 root_type Test;

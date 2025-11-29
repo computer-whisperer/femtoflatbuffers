@@ -121,8 +121,9 @@ impl<'a> Decoder<'a> {
 }
 
 pub trait ComponentEncode {
-    fn value_encode(&self, encoder: &mut Encoder) -> Result<u32, EncodeError>;
-    fn vtable_entry_encode(&self, encoder: &mut Encoder, value_offset: u16) -> Result<(), EncodeError>;
+    fn value_encode(&self, encoder: &mut Encoder) -> Result<Option<u32>, EncodeError>;
+    fn vtable_entry_encode(&self, encoder: &mut Encoder, value_offset: Option<u16>) -> Result<(), EncodeError>;
+    fn post_encode(&self, _encoder: &mut Encoder) -> Result<Option<u32>, EncodeError> {Ok(None)}
 }
 
 pub trait ComponentDecode {
@@ -130,12 +131,12 @@ pub trait ComponentDecode {
 }
 
 impl ComponentEncode for u32 {
-    fn value_encode(&self, encoder: &mut Encoder) -> Result<u32, EncodeError> {
-        encoder.encode_u32(*self)
+    fn value_encode(&self, encoder: &mut Encoder) -> Result<Option<u32>, EncodeError> {
+        Ok(Some(encoder.encode_u32(*self)?))
     }
 
-    fn vtable_entry_encode(&self, encoder: &mut Encoder, value_offset: u16) -> Result<(), EncodeError> {
-        encoder.encode_u16(value_offset)?;
+    fn vtable_entry_encode(&self, encoder: &mut Encoder, value_offset: Option<u16>) -> Result<(), EncodeError> {
+        encoder.encode_u16(value_offset.unwrap_or(0))?;
         Ok(())
     }
 }
@@ -147,6 +148,36 @@ impl ComponentDecode for u32 {
         }
         else {
             Err(DecodeError::InvalidData)
+        }
+    }
+}
+
+impl <T: ComponentEncode> ComponentEncode for Option<T> {
+    fn value_encode(&self, encoder: &mut Encoder) -> Result<Option<u32>, EncodeError> {
+        match self {
+            Some(x) => x.value_encode(encoder),
+            None => Ok(None)
+        }
+    }
+    fn vtable_entry_encode(&self, encoder: &mut Encoder, value_offset: Option<u16>) -> Result<(), EncodeError> {
+        match self {
+            Some(x) => x.vtable_entry_encode(encoder, value_offset),
+            None => Ok(())
+        }
+    }
+    fn post_encode(&self, encoder: &mut Encoder) -> Result<Option<u32>, EncodeError> {
+        match self {
+            Some(x) => x.post_encode(encoder),
+            None => Ok(None)
+        }
+    }
+}
+
+impl <T: ComponentDecode> ComponentDecode for Option<T> {
+    fn value_decode(decoder: &Decoder, table_start_offset: u32, value_offset: Option<u16>) -> Result<Self, DecodeError> {
+        match value_offset {
+            Some(value_offset) => Ok(Some(T::value_decode(decoder, table_start_offset, Some(value_offset))?)),
+            None => Ok(None)
         }
     }
 }
