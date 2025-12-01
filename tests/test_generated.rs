@@ -18,6 +18,97 @@ pub mod test {
   extern crate flatbuffers;
   use self::flatbuffers::{EndianScalar, Follow};
 
+#[deprecated(since = "2.0.0", note = "Use associated constants instead. This will no longer be generated in 2021.")]
+pub const ENUM_MIN_TEST_UNION: u8 = 0;
+#[deprecated(since = "2.0.0", note = "Use associated constants instead. This will no longer be generated in 2021.")]
+pub const ENUM_MAX_TEST_UNION: u8 = 2;
+#[deprecated(since = "2.0.0", note = "Use associated constants instead. This will no longer be generated in 2021.")]
+#[allow(non_camel_case_types)]
+pub const ENUM_VALUES_TEST_UNION: [TestUnion; 3] = [
+  TestUnion::NONE,
+  TestUnion::A,
+  TestUnion::B,
+];
+
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
+#[repr(transparent)]
+pub struct TestUnion(pub u8);
+#[allow(non_upper_case_globals)]
+impl TestUnion {
+  pub const NONE: Self = Self(0);
+  pub const A: Self = Self(1);
+  pub const B: Self = Self(2);
+
+  pub const ENUM_MIN: u8 = 0;
+  pub const ENUM_MAX: u8 = 2;
+  pub const ENUM_VALUES: &'static [Self] = &[
+    Self::NONE,
+    Self::A,
+    Self::B,
+  ];
+  /// Returns the variant's name or "" if unknown.
+  pub fn variant_name(self) -> Option<&'static str> {
+    match self {
+      Self::NONE => Some("NONE"),
+      Self::A => Some("A"),
+      Self::B => Some("B"),
+      _ => None,
+    }
+  }
+}
+impl core::fmt::Debug for TestUnion {
+  fn fmt(&self, f: &mut core::fmt::Formatter) -> core::fmt::Result {
+    if let Some(name) = self.variant_name() {
+      f.write_str(name)
+    } else {
+      f.write_fmt(format_args!("<UNKNOWN {:?}>", self.0))
+    }
+  }
+}
+impl<'a> flatbuffers::Follow<'a> for TestUnion {
+  type Inner = Self;
+  #[inline]
+  unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+    let b = unsafe { flatbuffers::read_scalar_at::<u8>(buf, loc) };
+    Self(b)
+  }
+}
+
+impl flatbuffers::Push for TestUnion {
+    type Output = TestUnion;
+    #[inline]
+    unsafe fn push(&self, dst: &mut [u8], _written_len: usize) {
+        unsafe { flatbuffers::emplace_scalar::<u8>(dst, self.0); }
+    }
+}
+
+impl flatbuffers::EndianScalar for TestUnion {
+  type Scalar = u8;
+  #[inline]
+  fn to_little_endian(self) -> u8 {
+    self.0.to_le()
+  }
+  #[inline]
+  #[allow(clippy::wrong_self_convention)]
+  fn from_little_endian(v: u8) -> Self {
+    let b = u8::from_le(v);
+    Self(b)
+  }
+}
+
+impl<'a> flatbuffers::Verifiable for TestUnion {
+  #[inline]
+  fn run_verifier(
+    v: &mut flatbuffers::Verifier, pos: usize
+  ) -> Result<(), flatbuffers::InvalidFlatbuffer> {
+    use self::flatbuffers::Verifiable;
+    u8::run_verifier(v, pos)
+  }
+}
+
+impl flatbuffers::SimpleToVerifyInSlice for TestUnion {}
+pub struct TestUnionUnionTableOffset {}
+
 pub enum TestOffset {}
 #[derive(Copy, Clone, PartialEq)]
 
@@ -146,6 +237,137 @@ impl core::fmt::Debug for Test<'_> {
       ds.field("a", &self.a());
       ds.field("b", &self.b());
       ds.field("c", &self.c());
+      ds.finish()
+  }
+}
+pub enum Test2Offset {}
+#[derive(Copy, Clone, PartialEq)]
+
+pub struct Test2<'a> {
+  pub _tab: flatbuffers::Table<'a>,
+}
+
+impl<'a> flatbuffers::Follow<'a> for Test2<'a> {
+  type Inner = Test2<'a>;
+  #[inline]
+  unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+    Self { _tab: unsafe { flatbuffers::Table::new(buf, loc) } }
+  }
+}
+
+impl<'a> Test2<'a> {
+  pub const VT_D: flatbuffers::VOffsetT = 4;
+  pub const VT_E: flatbuffers::VOffsetT = 6;
+  pub const VT_F: flatbuffers::VOffsetT = 8;
+
+  #[inline]
+  pub unsafe fn init_from_table(table: flatbuffers::Table<'a>) -> Self {
+    Test2 { _tab: table }
+  }
+  #[allow(unused_mut)]
+  pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: flatbuffers::Allocator + 'bldr>(
+    _fbb: &'mut_bldr mut flatbuffers::FlatBufferBuilder<'bldr, A>,
+    args: &'args Test2Args
+  ) -> flatbuffers::WIPOffset<Test2<'bldr>> {
+    let mut builder = Test2Builder::new(_fbb);
+    builder.add_f(args.f);
+    builder.add_e(args.e);
+    builder.add_d(args.d);
+    builder.finish()
+  }
+
+
+  #[inline]
+  pub fn d(&self) -> i32 {
+    // Safety:
+    // Created from valid Table for this object
+    // which contains a valid value in this slot
+    unsafe { self._tab.get::<i32>(Test2::VT_D, Some(0)).unwrap()}
+  }
+  #[inline]
+  pub fn e(&self) -> i32 {
+    // Safety:
+    // Created from valid Table for this object
+    // which contains a valid value in this slot
+    unsafe { self._tab.get::<i32>(Test2::VT_E, Some(0)).unwrap()}
+  }
+  #[inline]
+  pub fn f(&self) -> i32 {
+    // Safety:
+    // Created from valid Table for this object
+    // which contains a valid value in this slot
+    unsafe { self._tab.get::<i32>(Test2::VT_F, Some(0)).unwrap()}
+  }
+}
+
+impl flatbuffers::Verifiable for Test2<'_> {
+  #[inline]
+  fn run_verifier(
+    v: &mut flatbuffers::Verifier, pos: usize
+  ) -> Result<(), flatbuffers::InvalidFlatbuffer> {
+    use self::flatbuffers::Verifiable;
+    v.visit_table(pos)?
+     .visit_field::<i32>("d", Self::VT_D, false)?
+     .visit_field::<i32>("e", Self::VT_E, false)?
+     .visit_field::<i32>("f", Self::VT_F, false)?
+     .finish();
+    Ok(())
+  }
+}
+pub struct Test2Args {
+    pub d: i32,
+    pub e: i32,
+    pub f: i32,
+}
+impl<'a> Default for Test2Args {
+  #[inline]
+  fn default() -> Self {
+    Test2Args {
+      d: 0,
+      e: 0,
+      f: 0,
+    }
+  }
+}
+
+pub struct Test2Builder<'a: 'b, 'b, A: flatbuffers::Allocator + 'a> {
+  fbb_: &'b mut flatbuffers::FlatBufferBuilder<'a, A>,
+  start_: flatbuffers::WIPOffset<flatbuffers::TableUnfinishedWIPOffset>,
+}
+impl<'a: 'b, 'b, A: flatbuffers::Allocator + 'a> Test2Builder<'a, 'b, A> {
+  #[inline]
+  pub fn add_d(&mut self, d: i32) {
+    self.fbb_.push_slot::<i32>(Test2::VT_D, d, 0);
+  }
+  #[inline]
+  pub fn add_e(&mut self, e: i32) {
+    self.fbb_.push_slot::<i32>(Test2::VT_E, e, 0);
+  }
+  #[inline]
+  pub fn add_f(&mut self, f: i32) {
+    self.fbb_.push_slot::<i32>(Test2::VT_F, f, 0);
+  }
+  #[inline]
+  pub fn new(_fbb: &'b mut flatbuffers::FlatBufferBuilder<'a, A>) -> Test2Builder<'a, 'b, A> {
+    let start = _fbb.start_table();
+    Test2Builder {
+      fbb_: _fbb,
+      start_: start,
+    }
+  }
+  #[inline]
+  pub fn finish(self) -> flatbuffers::WIPOffset<Test2<'a>> {
+    let o = self.fbb_.end_table(self.start_);
+    flatbuffers::WIPOffset::new(o.value())
+  }
+}
+
+impl core::fmt::Debug for Test2<'_> {
+  fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+    let mut ds = f.debug_struct("Test2");
+      ds.field("d", &self.d());
+      ds.field("e", &self.e());
+      ds.field("f", &self.f());
       ds.finish()
   }
 }
@@ -390,6 +612,191 @@ impl core::fmt::Debug for ListTest<'_> {
   fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
     let mut ds = f.debug_struct("ListTest");
       ds.field("a", &self.a());
+      ds.field("b", &self.b());
+      ds.finish()
+  }
+}
+pub enum UnionTestOffset {}
+#[derive(Copy, Clone, PartialEq)]
+
+pub struct UnionTest<'a> {
+  pub _tab: flatbuffers::Table<'a>,
+}
+
+impl<'a> flatbuffers::Follow<'a> for UnionTest<'a> {
+  type Inner = UnionTest<'a>;
+  #[inline]
+  unsafe fn follow(buf: &'a [u8], loc: usize) -> Self::Inner {
+    Self { _tab: unsafe { flatbuffers::Table::new(buf, loc) } }
+  }
+}
+
+impl<'a> UnionTest<'a> {
+  pub const VT_A_TYPE: flatbuffers::VOffsetT = 4;
+  pub const VT_A: flatbuffers::VOffsetT = 6;
+  pub const VT_B: flatbuffers::VOffsetT = 8;
+
+  #[inline]
+  pub unsafe fn init_from_table(table: flatbuffers::Table<'a>) -> Self {
+    UnionTest { _tab: table }
+  }
+  #[allow(unused_mut)]
+  pub fn create<'bldr: 'args, 'args: 'mut_bldr, 'mut_bldr, A: flatbuffers::Allocator + 'bldr>(
+    _fbb: &'mut_bldr mut flatbuffers::FlatBufferBuilder<'bldr, A>,
+    args: &'args UnionTestArgs
+  ) -> flatbuffers::WIPOffset<UnionTest<'bldr>> {
+    let mut builder = UnionTestBuilder::new(_fbb);
+    builder.add_b(args.b);
+    if let Some(x) = args.a { builder.add_a(x); }
+    builder.add_a_type(args.a_type);
+    builder.finish()
+  }
+
+
+  #[inline]
+  pub fn a_type(&self) -> TestUnion {
+    // Safety:
+    // Created from valid Table for this object
+    // which contains a valid value in this slot
+    unsafe { self._tab.get::<TestUnion>(UnionTest::VT_A_TYPE, Some(TestUnion::NONE)).unwrap()}
+  }
+  #[inline]
+  pub fn a(&self) -> Option<flatbuffers::Table<'a>> {
+    // Safety:
+    // Created from valid Table for this object
+    // which contains a valid value in this slot
+    unsafe { self._tab.get::<flatbuffers::ForwardsUOffset<flatbuffers::Table<'a>>>(UnionTest::VT_A, None)}
+  }
+  #[inline]
+  pub fn b(&self) -> i32 {
+    // Safety:
+    // Created from valid Table for this object
+    // which contains a valid value in this slot
+    unsafe { self._tab.get::<i32>(UnionTest::VT_B, Some(0)).unwrap()}
+  }
+  #[inline]
+  #[allow(non_snake_case)]
+  pub fn a_as_a(&self) -> Option<Test<'a>> {
+    if self.a_type() == TestUnion::A {
+      self.a().map(|t| {
+       // Safety:
+       // Created from a valid Table for this object
+       // Which contains a valid union in this slot
+       unsafe { Test::init_from_table(t) }
+     })
+    } else {
+      None
+    }
+  }
+
+  #[inline]
+  #[allow(non_snake_case)]
+  pub fn a_as_b(&self) -> Option<Test2<'a>> {
+    if self.a_type() == TestUnion::B {
+      self.a().map(|t| {
+       // Safety:
+       // Created from a valid Table for this object
+       // Which contains a valid union in this slot
+       unsafe { Test2::init_from_table(t) }
+     })
+    } else {
+      None
+    }
+  }
+
+}
+
+impl flatbuffers::Verifiable for UnionTest<'_> {
+  #[inline]
+  fn run_verifier(
+    v: &mut flatbuffers::Verifier, pos: usize
+  ) -> Result<(), flatbuffers::InvalidFlatbuffer> {
+    use self::flatbuffers::Verifiable;
+    v.visit_table(pos)?
+     .visit_union::<TestUnion, _>("a_type", Self::VT_A_TYPE, "a", Self::VT_A, false, |key, v, pos| {
+        match key {
+          TestUnion::A => v.verify_union_variant::<flatbuffers::ForwardsUOffset<Test>>("TestUnion::A", pos),
+          TestUnion::B => v.verify_union_variant::<flatbuffers::ForwardsUOffset<Test2>>("TestUnion::B", pos),
+          _ => Ok(()),
+        }
+     })?
+     .visit_field::<i32>("b", Self::VT_B, false)?
+     .finish();
+    Ok(())
+  }
+}
+pub struct UnionTestArgs {
+    pub a_type: TestUnion,
+    pub a: Option<flatbuffers::WIPOffset<flatbuffers::UnionWIPOffset>>,
+    pub b: i32,
+}
+impl<'a> Default for UnionTestArgs {
+  #[inline]
+  fn default() -> Self {
+    UnionTestArgs {
+      a_type: TestUnion::NONE,
+      a: None,
+      b: 0,
+    }
+  }
+}
+
+pub struct UnionTestBuilder<'a: 'b, 'b, A: flatbuffers::Allocator + 'a> {
+  fbb_: &'b mut flatbuffers::FlatBufferBuilder<'a, A>,
+  start_: flatbuffers::WIPOffset<flatbuffers::TableUnfinishedWIPOffset>,
+}
+impl<'a: 'b, 'b, A: flatbuffers::Allocator + 'a> UnionTestBuilder<'a, 'b, A> {
+  #[inline]
+  pub fn add_a_type(&mut self, a_type: TestUnion) {
+    self.fbb_.push_slot::<TestUnion>(UnionTest::VT_A_TYPE, a_type, TestUnion::NONE);
+  }
+  #[inline]
+  pub fn add_a(&mut self, a: flatbuffers::WIPOffset<flatbuffers::UnionWIPOffset>) {
+    self.fbb_.push_slot_always::<flatbuffers::WIPOffset<_>>(UnionTest::VT_A, a);
+  }
+  #[inline]
+  pub fn add_b(&mut self, b: i32) {
+    self.fbb_.push_slot::<i32>(UnionTest::VT_B, b, 0);
+  }
+  #[inline]
+  pub fn new(_fbb: &'b mut flatbuffers::FlatBufferBuilder<'a, A>) -> UnionTestBuilder<'a, 'b, A> {
+    let start = _fbb.start_table();
+    UnionTestBuilder {
+      fbb_: _fbb,
+      start_: start,
+    }
+  }
+  #[inline]
+  pub fn finish(self) -> flatbuffers::WIPOffset<UnionTest<'a>> {
+    let o = self.fbb_.end_table(self.start_);
+    flatbuffers::WIPOffset::new(o.value())
+  }
+}
+
+impl core::fmt::Debug for UnionTest<'_> {
+  fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+    let mut ds = f.debug_struct("UnionTest");
+      ds.field("a_type", &self.a_type());
+      match self.a_type() {
+        TestUnion::A => {
+          if let Some(x) = self.a_as_a() {
+            ds.field("a", &x)
+          } else {
+            ds.field("a", &"InvalidFlatbuffer: Union discriminant does not match value.")
+          }
+        },
+        TestUnion::B => {
+          if let Some(x) = self.a_as_b() {
+            ds.field("a", &x)
+          } else {
+            ds.field("a", &"InvalidFlatbuffer: Union discriminant does not match value.")
+          }
+        },
+        _ => {
+          let x: Option<()> = None;
+          ds.field("a", &x)
+        },
+      };
       ds.field("b", &self.b());
       ds.finish()
   }

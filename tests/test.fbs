@@ -1,12 +1,18 @@
 namespace Test;
 
-table Test{
+table Test {
   a: int;
   b: int;
   c: int;
 }
 
-table NestingTest{
+table Test2 {
+  d: int;
+  e: int;
+  f: int;
+}
+
+table NestingTest {
   a: int;
   b: int;
   c: Test;
@@ -15,6 +21,16 @@ table NestingTest{
 table ListTest{
   a: int;
   b: [Test];
+}
+
+union TestUnion {
+  A: Test,
+  B: Test2,
+}
+
+table UnionTest {
+  a: TestUnion;
+  b: int;
 }
 
 root_type Test;

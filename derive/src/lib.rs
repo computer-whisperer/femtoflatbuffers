@@ -1,5 +1,6 @@
 extern crate proc_macro;
 
+use std::env::var;
 use proc_macro2::{Ident, TokenStream};
 use quote::{format_ident, quote};
 use syn::{Data, DeriveInput, parse_macro_input, parse_quote};
@@ -20,7 +21,7 @@ fn add_trait_bounds(mut generics: syn::Generics) -> syn::Generics {
 }
 
 #[proc_macro_derive(Table)]
-pub fn flatbuffers_struct_derive(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+pub fn flatbuffers_table_derive(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
 
     let name = input.ident;
@@ -76,12 +77,12 @@ pub fn flatbuffers_struct_derive(input: proc_macro::TokenStream) -> proc_macro::
                     Err(femtoflatbuffers::DecodeError::InvalidData)
                 }
             }
-            fn table_value_size(table_value_global_offset: Option<u32>) -> usize {
+            fn table_value_size(decoder: &Decoder, table_value_global_offset: Option<u32>) -> Result<usize, femtoflatbuffers::DecodeError> {
                 if let Some(_) = table_value_global_offset {
-                    4
+                    Ok(4)
                 }
                 else {
-                    0
+                    Ok(0)
                 }
             }
         }
@@ -137,7 +138,7 @@ fn do_encode_table(data: &Data) -> TokenStream {
                         };
                     });
                     offsets_encode.push(quote! {
-                        encoder.encode_u16(#offset_name.map(|x| x.0).unwrap_or(0))?;
+                        encoder.encode_u16(#offset_name.as_ref().map(|x| x.0.clone()).unwrap_or(0))?;
                     });
                     post_encodes.push(quote! {
                         if let Some((_, tmp_value)) = #offset_name {
@@ -200,6 +201,128 @@ fn do_decode_table(type_name: Ident, data: &Data, root_offset_ident: Ident) -> T
         panic!("Only structs are supported");
     }
 }
+
+enum TestTest {
+    TEST1(u32),
+    TEST2(u32, u32)
+}
+
+fn test(test: TestTest) {
+    match test {
+        TestTest::TEST1(a) => println!("{:?}", a),
+        TestTest::TEST2(a, ..) => println!("{:?}", a)
+    }
+}
+
+#[proc_macro_derive(Union)]
+pub fn flatbuffers_union_derive(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    let input = parse_macro_input!(input as DeriveInput);
+
+    let name = input.ident;
+
+    let generics = add_trait_bounds(input.generics);
+    let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
+    let expanded = if let Data::Enum(ref data) = input.data {
+        let mut variant_id = 0u8;
+        let mut fixit_enum_ident = format_ident!("FixItEnum{}", name);
+        let mut tmp_value_enum_arms = vec![];
+        let mut value_encode_match_cases = vec![];
+        let mut post_encode_match_cases = vec![];
+        let mut decode_match_cases = vec![];
+        for variant in &data.variants {
+            let variant_ident = variant.ident.clone();
+            if variant_id == 0 {
+                value_encode_match_cases.push(quote!{
+                    #name::#variant_ident => {
+                        let res = encoder.encode_u8(#variant_id)?;
+                        (res, None)
+                    }
+                });
+            }
+            else {
+                let variant_field = variant.fields.iter().next().unwrap();
+                let variant_type = &variant_field.ty;
+                let enum_arm_ident = format_ident!("{}_arm", variant_ident);
+                tmp_value_enum_arms.push(quote!{
+                    #enum_arm_ident(<#variant_type as femtoflatbuffers::ComponentEncode>::TmpValue)
+                });
+                value_encode_match_cases.push(quote!{
+                    #name::#variant_ident(field, ..) => {
+                        let res = encoder.encode_u8(#variant_id)?;
+                        let value_res = femtoflatbuffers::ComponentEncode::value_encode(field, encoder)?;
+                        (res, Some(#fixit_enum_ident::#enum_arm_ident(value_res.unwrap().1)))
+                    }
+               });
+                post_encode_match_cases.push(quote!{
+                    (#name::#variant_ident(field, ..), Some(#fixit_enum_ident::#enum_arm_ident(tmp_value))) => {
+                        femtoflatbuffers::ComponentEncode::post_encode(field, encoder, tmp_value)?;
+                    }
+                });
+                decode_match_cases.push(quote!{
+                    #variant_id => {
+                        let offset = decoder.decode_u32(offset)?;
+                        femtoflatbuffers::ComponentDecode::value_decode(decoder, Some(offset + 4)).map(|field| #name::#variant_ident(field))
+                    }
+                });
+            }
+            variant_id += 1;
+        }
+        let expanded = quote! {
+            enum #fixit_enum_ident {
+                #(#tmp_value_enum_arms,)*
+            }
+            impl #impl_generics femtoflatbuffers::ComponentEncode for #name #ty_generics #where_clause {
+                type TmpValue = Option<#fixit_enum_ident>;
+                fn value_encode(&self, encoder: &mut femtoflatbuffers::Encoder) -> Result<Option<(u32, Self::TmpValue)>, femtoflatbuffers::EncodeError> {
+                    Ok(Some(match self {
+                        #(#value_encode_match_cases)*
+                    }))
+                }
+                fn post_encode(&self, encoder: &mut femtoflatbuffers::Encoder, tmp_value: Self::TmpValue) -> Result<(), femtoflatbuffers::EncodeError> {
+                    match (self, tmp_value) {
+                        #(#post_encode_match_cases)*
+                        _ => {}
+                    }
+                    Ok(())
+                }
+            }
+            impl #impl_generics femtoflatbuffers::ComponentDecode for #name #ty_generics #where_clause {
+                fn value_decode(decoder: &femtoflatbuffers::Decoder, offset: Option<u32>) -> Result<Self, femtoflatbuffers::DecodeError> {
+                    if let Some(offset) = offset {
+                        match decoder.decode_u8(offset)? {
+                            #(#decode_match_cases,)*
+                            _ => {
+                                Err(femtoflatbuffers::DecodeError::InvalidData)
+                            }
+                        }
+                    }
+                    else {
+                        Err(femtoflatbuffers::DecodeError::InvalidData)
+                    }
+                }
+                fn table_value_size(decoder: &femtoflatbuffers::Decoder, table_value_global_offset: Option<u32>) -> Result<usize, femtoflatbuffers::DecodeError> {
+                    if let Some(offset) = table_value_global_offset {
+                        if decoder.decode_u8(offset)? == 0 {
+                            Ok(4)
+                        }
+                        else {
+                            Ok(8)
+                        }
+                    }
+                    else {
+                        Ok(0)
+                    }
+                }
+            }
+        };
+        expanded
+    }
+    else {
+        panic!("Only enum are supported");
+    };
+    proc_macro::TokenStream::from(expanded)
+}
+
 
 #[cfg(test)]
 mod tests {}

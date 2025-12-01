@@ -8,7 +8,7 @@ pub trait ComponentEncode {
 
 pub trait ComponentDecode {
     fn value_decode(decoder: &Decoder, table_value_global_offset: Option<u32>) -> Result<Self, DecodeError> where Self: Sized;
-    fn table_value_size(table_value_global_offset: Option<u32>) -> usize;
+    fn table_value_size(decoder: &Decoder, table_value_global_offset: Option<u32>) -> Result<usize, DecodeError>;
 }
 
 pub trait PrimitiveComponent {
@@ -41,12 +41,12 @@ impl <T: PrimitiveComponent> ComponentDecode for T {
             Err(DecodeError::InvalidData)
         }
     }
-    fn table_value_size(table_value_global_offset: Option<u32>) -> usize {
+    fn table_value_size(_decoder: &Decoder, table_value_global_offset: Option<u32>) -> Result<usize, DecodeError> {
         if let Some(_) = table_value_global_offset {
-            T::size()
+            Ok(T::size())
         }
         else {
-            0
+            Ok(0)
         }
     }
 }
@@ -74,12 +74,12 @@ impl <T: ComponentDecode> ComponentDecode for Option<T> {
             None => Ok(None)
         }
     }
-    fn table_value_size(table_value_global_offset: Option<u32>) -> usize {
+    fn table_value_size(decoder: &Decoder, table_value_global_offset: Option<u32>) -> Result<usize, DecodeError> {
         if let Some(_) = table_value_global_offset {
-            T::table_value_size(Some(0))
+            T::table_value_size(decoder, Some(0))
         }
         else {
-            0
+            Ok(0)
         }
     }
 }
@@ -127,19 +127,19 @@ impl <T: ComponentDecode> ComponentDecode for alloc::vec::Vec<T> {
             let mut result = alloc::vec::Vec::with_capacity(list_length as usize);
             for _ in 0..list_length {
                 result.push(T::value_decode(decoder, Some(working_offset))?);
-                working_offset += T::table_value_size(Some(working_offset)) as u32;
+                working_offset += T::table_value_size(decoder, Some(working_offset))? as u32;
             }
             Ok(result)
         } else {
             Ok(alloc::vec::Vec::new())
         }
     }
-    fn table_value_size(table_value_global_offset: Option<u32>) -> usize {
+    fn table_value_size(_decoder: &Decoder, table_value_global_offset: Option<u32>) -> Result<usize, DecodeError> {
         if let Some(_) = table_value_global_offset {
-            4
+            Ok(4)
         }
         else {
-            0
+            Ok(0)
         }
     }
 }

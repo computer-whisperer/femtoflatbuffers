@@ -10,7 +10,7 @@ pub mod table;
 pub mod components;
 
 pub use components::{ComponentEncode, ComponentDecode};
-pub use femtoflatbuffers_derive::Table;
+pub use femtoflatbuffers_derive::{Table, Union};
 
 #[derive(thiserror::Error, Debug)]
 pub enum EncodeError {
@@ -94,6 +94,16 @@ impl<'a> Encoder<'a> {
         self.buffer[offset as usize..offset as usize+2].copy_from_slice(&value.to_le_bytes());
         Ok(())
     }
+
+    pub fn encode_u8(&mut self, value: u8) -> Result<u32, EncodeError> {
+        if self.buffer.len() - self.used_bytes < 1 {
+            return Err(EncodeError::OutOfSpace);
+        }
+        let offset = self.used_bytes as u32;
+        self.buffer[self.used_bytes] = value;
+        self.used_bytes += 1;
+        Ok(offset)
+    }
 }
 
 
@@ -128,6 +138,14 @@ impl<'a> Decoder<'a> {
             Ok(u16::from_le_bytes(
                 self.buffer[offset as usize..offset as usize + 2].try_into().unwrap()
             ))
+        }
+    }
+
+    pub fn decode_u8(&self, offset: u32) -> Result<u8, DecodeError> {
+        if offset + 1 > self.buffer.len() as u32 {
+            Err(DecodeError::InvalidData)
+        } else {
+            Ok(self.buffer[offset as usize])
         }
     }
 }
