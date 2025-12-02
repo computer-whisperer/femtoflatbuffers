@@ -49,17 +49,21 @@ pub fn flatbuffers_table_derive(input: proc_macro::TokenStream) -> proc_macro::T
             }
         }
         impl #impl_generics femtoflatbuffers::ComponentEncode for #name #ty_generics #where_clause {
-            type TmpValue = u32;
-            fn value_encode(&self, encoder: &mut femtoflatbuffers::Encoder) -> Result<Option<(u32, Self::TmpValue)>, femtoflatbuffers::EncodeError> {
+            type WorkingValue = (u32, u32);
+            fn value_encode(&self, encoder: &mut femtoflatbuffers::Encoder, table_start: u32) -> Result<Self::WorkingValue, femtoflatbuffers::EncodeError> {
                 let value_offset = encoder.encode_i32(0)?;
-                Ok(Some((value_offset, value_offset)))
+                Ok((table_start, value_offset))
             }
-            fn post_encode(&self, encoder: &mut femtoflatbuffers::Encoder, tmp_value: Self::TmpValue) -> Result<(), femtoflatbuffers::EncodeError> {
+            fn vtable_encode(&self, encoder: &mut femtoflatbuffers::Encoder, _vtable_start: u32, working_value: &Self::WorkingValue) -> Result<(), femtoflatbufferes::EncodeError> {
+                encoder.encode_u16((working_value.1 - working_value.0) as u16)?;
+                Ok(())
+            }
+            fn post_encode(&self, encoder: &mut femtoflatbuffers::Encoder, working_value: &Self::WorkingValue) -> Result<(), femtoflatbuffers::EncodeError> {
                 match {
                     #encode
                 } {
                     Ok(global_table_offset) => {
-                        let global_field_offset = tmp_value;
+                        let global_field_offset = working_value.1;
                         encoder.encode_i32_at(global_field_offset, (global_table_offset - global_field_offset) as i32)?;
                         Ok(())
                     },
@@ -68,22 +72,32 @@ pub fn flatbuffers_table_derive(input: proc_macro::TokenStream) -> proc_macro::T
             }
         }
         impl #impl_generics femtoflatbuffers::ComponentDecode for #name #ty_generics #where_clause {
-            fn value_decode(decoder: &femtoflatbuffers::Decoder, offset: Option<u32>) -> Result<Self, femtoflatbuffers::DecodeError> {
-                if let Some(offset_offset) = offset {
-                    let #root_offset_ident = (offset_offset as i32 + decoder.decode_i32(offset_offset)?) as u32;
-                    #decode
-                }
-                else {
-                    Err(femtoflatbuffers::DecodeError::InvalidData)
-                }
+            type WorkingValue = (u32, u16);
+            type VectorWorkingValue = Self::WorkingValue;
+            fn vtable_decode(decoder: &Decoder, table_start: u32, vtable_entry: u32) -> Result<(Self::WorkingValue, u32), DecodeError> {
+                let vtable_entry_value = decoder.decode_u16(vtable_entry)?;
+                Ok(((table_start, vtable_entry_value), vtable_entry+2))
             }
-            fn table_value_size(decoder: &Decoder, table_value_global_offset: Option<u32>) -> Result<usize, femtoflatbuffers::DecodeError> {
-                if let Some(_) = table_value_global_offset {
-                    Ok(4)
-                }
-                else {
-                    Ok(0)
-                }
+            fn value_decode(decoder: &femtoflatbuffers::Decoder, working_value: &Self::WorkingValue) -> Result<Self, femtoflatbuffers::DecodeError> {
+                let #root_offset_ident = (working_value.0 as i32 + decoder.decode_i32(working_value.0 + working_value.1 as u32)?) as u32;
+                #decode
+            }
+            fn vector_vtable_decode(decoder: &Decoder, table_start: u32, vtable_entry: u32) -> Result<(Self::VectorWorkingValue, u32), DecodeError> {
+                let vtable_entry_value = decoder.decode_u16(vtable_entry)?;
+                Ok(((table_start, vtable_entry_value), vtable_entry+2))
+            }
+            fn vector_len_decode(decoder: &Decoder, working_value: &Self::VectorWorkingValue) -> Result<usize, DecodeError> {
+                let vector_offset = (decoder.decode_i32(working_value.0 + working_value.1 as u32)? + working_value.0 as i32) as u32;
+                Ok(decoder.decode_u32(vector_offset)? as usize)
+            }
+            fn vector_value_decode(decoder: &Decoder, working_value: &Self::VectorWorkingValue, idx: usize) -> Result<Self, DecodeError>
+            where
+                Self: Sized
+            {
+                let vector_offset = (decoder.decode_i32(working_value.0 + working_value.1 as u32)? + working_value.0 as i32) as u32;
+                let vector_entry_offset = (vector_offset+4) + (idx*4) as u32;
+                let #root_offset_ident = (vector_entry_offset as i32 + decoder.decode_i32(vector_entry_offset)) as u32;
+                #decode
             }
         }
     };
@@ -92,26 +106,27 @@ pub fn flatbuffers_table_derive(input: proc_macro::TokenStream) -> proc_macro::T
 
 
 fn inner_do_table_encode(
-    start_offset_ident: Ident,
+    table_start_ident: Ident,
+    vtable_start_ident: Ident,
     fields_encode: &[TokenStream],
     offsets_encode: &[TokenStream],
     post_encode: &[TokenStream]
 ) -> TokenStream {
     quote! {
         // Write the table itself
-        let #start_offset_ident = encoder.encode_i32(0)?;
+        let #table_start_ident = encoder.encode_i32(0)?;
         #(#fields_encode)*
         let table_end = encoder.used_bytes();
         // Write the vtable
-        let start_vtable = encoder.encode_u16(0)?;
-        encoder.encode_i32_at(#start_offset_ident, -((start_vtable - #start_offset_ident) as i32))?; // Set vtable offset
-        encoder.encode_u16((table_end - #start_offset_ident) as u16)?; // Set table size
+        let #vtable_start_ident = encoder.encode_u16(0)?;
+        encoder.encode_i32_at(#table_start_ident, -((#vtable_start_ident - #table_start_ident) as i32))?; // Set vtable offset
+        encoder.encode_u16((table_end - #table_start_ident) as u16)?; // Set table size
         // Set field offsets
         #(#offsets_encode)*
         // Write the start table offset
-        encoder.encode_u16_at(start_vtable, (encoder.used_bytes() - start_vtable) as u16)?;
+        encoder.encode_u16_at(#vtable_start_ident, (encoder.used_bytes() - #vtable_start_ident) as u16)?;
         #(#post_encode)*
-        Ok(#start_offset_ident)
+        Ok(#table_start_ident)
     }
 }
 
@@ -122,31 +137,22 @@ fn do_encode_table(data: &Data) -> TokenStream {
                 let mut fields_encode = Vec::new();
                 let mut offsets_encode = Vec::new();
                 let mut post_encodes = Vec::new();
-                let start_offset_ident = format_ident!("start");
+                let table_start_ident = format_ident!("start");
+                let vtable_start_ident = format_ident!("vtable_start");
                 for field in fields.named.iter() {
                     let field_name = field.ident.as_ref().unwrap();
-                    let offset_name = format_ident!("{}_offset_blah", field_name);
+                    let working_value_name = format_ident!("{}_working_value", field_name);
                     fields_encode.push(quote! {
-                        let #offset_name = {
-                            let res = femtoflatbuffers::ComponentEncode::value_encode(&self.#field_name, encoder)?;
-                            if let Some((global_offset, tmp_value)) = res {
-                                Some(((global_offset - #start_offset_ident) as u16, tmp_value))
-                            }
-                            else {
-                                None
-                            }
-                        };
+                        let #working_value_name = femtoflatbuffers::ComponentEncode::value_encode(&self.#field_name, encoder, #table_start_ident)?;
                     });
                     offsets_encode.push(quote! {
-                        encoder.encode_u16(#offset_name.as_ref().map(|x| x.0.clone()).unwrap_or(0))?;
+                        femtoflatbuffers::ComponentEncode::vtable_encode(&self.#field_name, encoder, #vtable_start_ident, &#working_value_name)?;
                     });
                     post_encodes.push(quote! {
-                        if let Some((_, tmp_value)) = #offset_name {
-                            femtoflatbuffers::ComponentEncode::post_encode(&self.#field_name, encoder, tmp_value)?;
-                        }
+                        femtoflatbuffers::ComponentEncode::post_encode(&self.#field_name, encoder, &#working_value_name)?;
                     });
                 }
-                inner_do_table_encode(start_offset_ident, &fields_encode, &offsets_encode, &post_encodes)
+                inner_do_table_encode(table_start_ident, vtable_start_ident, &fields_encode, &offsets_encode, &post_encodes)
             }
             _ => panic!("Only named fields are supported"),
         }
@@ -174,23 +180,17 @@ fn do_decode_table(type_name: Ident, data: &Data, root_offset_ident: Ident) -> T
             syn::Fields::Named(ref fields) => {
                 let mut offset_calcs = Vec::new();
                 let mut struct_populations = Vec::new();
-                let mut offset = 4u32;
+                let table_start_ident = format_ident!("table_start");
+                let offset_ident = format_ident!("offset");
                 for field in fields.named.iter() {
                     let field_name = field.ident.as_ref().unwrap();
-                    let offset_name = format_ident!("{}_offset_blah", field_name);
+                    let working_value_ident = format_ident!("{}_working_value", field_name);
                     offset_calcs.push(quote! {
-                        let #offset_name = {
-                            let val = decoder.decode_u16(vtable_offset + #offset)?;
-                            if val == 0 {
-                                None
-                            } else {
-                                Some(val)
-                            }
-                        };
+                        let (#working_value_ident, #offset_ident) = femtoflatbuffers::ComponentDecode::vtable_decode(&decoder, #table_start_ident, #offset_ident)
                     });
                     offset += 2;
                     struct_populations.push(quote! {
-                        #field_name: femtoflatbuffers::ComponentDecode::value_decode(&decoder, #offset_name.map(|x| x as u32 + #root_offset_ident))?
+                        #field_name: femtoflatbuffers::ComponentDecode::value_decode(&decoder, #working_value_ident)?
                     });
                 }
                 inner_do_decode_table(type_name, root_offset_ident, &offset_calcs, &struct_populations)
