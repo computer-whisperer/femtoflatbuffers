@@ -31,6 +31,48 @@ impl PrimitiveComponent for u32 {
     fn do_decode(decoder: &Decoder, offset: u32) -> Result<Self, DecodeError> {Ok(decoder.decode_u32(offset)?)}
 }
 
+impl PrimitiveComponent for u64 {
+    fn alignment() -> usize {8}
+    fn size() -> usize {8}
+    fn do_encode(&self, encoder: &mut Encoder) -> Result<u32, EncodeError> {encoder.encode_u64(*self)}
+    fn do_decode(decoder: &Decoder, offset: u32) -> Result<Self, DecodeError> {Ok(decoder.decode_u64(offset)?)}
+}
+
+impl PrimitiveComponent for i64 {
+    fn alignment() -> usize {8}
+    fn size() -> usize {8}
+    fn do_encode(&self, encoder: &mut Encoder) -> Result<u32, EncodeError> {encoder.encode_i64(*self)}
+    fn do_decode(decoder: &Decoder, offset: u32) -> Result<Self, DecodeError> {Ok(decoder.decode_i64(offset)?)}
+}
+
+impl PrimitiveComponent for i32 {
+    fn alignment() -> usize {4}
+    fn size() -> usize {4}
+    fn do_encode(&self, encoder: &mut Encoder) -> Result<u32, EncodeError> {encoder.encode_i32(*self)}
+    fn do_decode(decoder: &Decoder, offset: u32) -> Result<Self, DecodeError> {Ok(decoder.decode_i32(offset)?)}
+}
+
+impl PrimitiveComponent for u16 {
+    fn alignment() -> usize {2}
+    fn size() -> usize {2}
+    fn do_encode(&self, encoder: &mut Encoder) -> Result<u32, EncodeError> {encoder.encode_u16(*self)}
+    fn do_decode(decoder: &Decoder, offset: u32) -> Result<Self, DecodeError> {Ok(decoder.decode_u16(offset)?)}
+}
+
+impl PrimitiveComponent for i16 {
+    fn alignment() -> usize {2}
+    fn size() -> usize {2}
+    fn do_encode(&self, encoder: &mut Encoder) -> Result<u32, EncodeError> {encoder.encode_i16(*self)}
+    fn do_decode(decoder: &Decoder, offset: u32) -> Result<Self, DecodeError> {Ok(decoder.decode_i16(offset)?)}
+}
+
+impl PrimitiveComponent for u8 {
+    fn alignment() -> usize {1}
+    fn size() -> usize {1}
+    fn do_encode(&self, encoder: &mut Encoder) -> Result<u32, EncodeError> {encoder.encode_u8(*self)}
+    fn do_decode(decoder: &Decoder, offset: u32) -> Result<Self, DecodeError> {Ok(decoder.decode_u8(offset)?)}
+}
+
 impl <T: PrimitiveComponent> ComponentEncode for T {
     type WorkingValue = (u32, u32);
     fn value_encode(&self, encoder: &mut Encoder, table_start: u32) -> Result<Self::WorkingValue, EncodeError> {

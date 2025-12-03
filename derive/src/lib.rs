@@ -1,10 +1,10 @@
 extern crate proc_macro;
 
-use std::env::var;
 use proc_macro2::{Ident, TokenStream};
 use quote::{format_ident, quote};
-use syn::{Data, DeriveInput, parse_macro_input, parse_quote};
+use std::env::var;
 use syn::token::Token;
+use syn::{Data, DeriveInput, parse_macro_input, parse_quote};
 
 fn add_trait_bounds(mut generics: syn::Generics) -> syn::Generics {
     for param in &mut generics.params {
@@ -82,15 +82,15 @@ pub fn flatbuffers_table_derive(input: proc_macro::TokenStream) -> proc_macro::T
                 let #root_offset_ident = ((working_value.0 + working_value.1 as u32) as i32 + decoder.decode_i32(working_value.0 + working_value.1 as u32)?) as u32;
                 #decode
             }
-            fn vector_vtable_decode(decoder: &Decoder, table_start: u32, vtable_entry: u32) -> Result<(Self::VectorWorkingValue, u32), femtoflatbuffers::DecodeError> {
+            fn vector_vtable_decode(decoder: &femtoflatbuffers::Decoder, table_start: u32, vtable_entry: u32) -> Result<(Self::VectorWorkingValue, u32), femtoflatbuffers::DecodeError> {
                 let vtable_entry_value = decoder.decode_u16(vtable_entry)?;
                 Ok(((table_start, vtable_entry_value), vtable_entry+2))
             }
-            fn vector_len_decode(decoder: &Decoder, working_value: &Self::VectorWorkingValue) -> Result<usize, femtoflatbuffers::DecodeError> {
+            fn vector_len_decode(decoder: &femtoflatbuffers::Decoder, working_value: &Self::VectorWorkingValue) -> Result<usize, femtoflatbuffers::DecodeError> {
                 let vector_offset = (decoder.decode_i32(working_value.0 + working_value.1 as u32)? + working_value.0 as i32) as u32;
                 Ok(decoder.decode_u32(vector_offset)? as usize)
             }
-            fn vector_value_decode(decoder: &Decoder, working_value: &Self::VectorWorkingValue, idx: usize) -> Result<Self, femtoflatbuffers::DecodeError>
+            fn vector_value_decode(decoder: &femtoflatbuffers::Decoder, working_value: &Self::VectorWorkingValue, idx: usize) -> Result<Self, femtoflatbuffers::DecodeError>
             where
                 Self: Sized
             {
@@ -104,13 +104,12 @@ pub fn flatbuffers_table_derive(input: proc_macro::TokenStream) -> proc_macro::T
     proc_macro::TokenStream::from(expanded)
 }
 
-
 fn inner_do_table_encode(
     table_start_ident: Ident,
     vtable_start_ident: Ident,
     fields_encode: &[TokenStream],
     offsets_encode: &[TokenStream],
-    post_encode: &[TokenStream]
+    post_encode: &[TokenStream],
 ) -> TokenStream {
     quote! {
         // Write the table itself
@@ -152,7 +151,13 @@ fn do_encode_table(data: &Data) -> TokenStream {
                         femtoflatbuffers::ComponentEncode::post_encode(&self.#field_name, encoder, &#working_value_name)?;
                     });
                 }
-                inner_do_table_encode(table_start_ident, vtable_start_ident, &fields_encode, &offsets_encode, &post_encodes)
+                inner_do_table_encode(
+                    table_start_ident,
+                    vtable_start_ident,
+                    &fields_encode,
+                    &offsets_encode,
+                    &post_encodes,
+                )
             }
             _ => panic!("Only named fields are supported"),
         }
@@ -220,51 +225,54 @@ pub fn flatbuffers_union_derive(input: proc_macro::TokenStream) -> proc_macro::T
         for variant in &data.variants {
             let variant_ident = variant.ident.clone();
             if variant_id == 0 {
-                value_encode_match_cases.push(quote!{
+                value_encode_match_cases.push(quote! {
                     #name::#variant_ident => {
                         Err(femtoflatbuffers::EncodeError::InvalidStructure)
                     }
                 });
-            }
-            else {
-                let variant_field = variant.fields.iter().next().unwrap();
-                let variant_type = &variant_field.ty;
-                let enum_arm_ident = format_ident!("{}_arm", variant_ident);
-                encode_working_value_enum_arms.push(quote!{
-                    #enum_arm_ident(<#variant_type as femtoflatbuffers::ComponentEncode>::WorkingValue)
-                });
-                decode_working_value_enum_arms.push(quote!{
-                    #enum_arm_ident(<#variant_type as femtoflatbuffers::ComponentDecode>::WorkingValue)
-                });
-                value_encode_match_cases.push(quote!{
-                    #name::#variant_ident(field, ..) => {
-                        let res = encoder.encode_u8(#variant_id)?;
-                        let value_res = femtoflatbuffers::ComponentEncode::value_encode(field, encoder, table_start)?;
-                        Ok(((table_start, res), #encode_working_value_enum_ident::#enum_arm_ident(value_res)))
-                    }
-               });
-                vtable_encode_match_cases.push(quote!{
-                    (#name::#variant_ident(field, ..), ((table_start, which_offset), #encode_working_value_enum_ident::#enum_arm_ident(working_value))) => {
-                        encoder.encode_u16((which_offset - table_start) as u16)?;
-                        femtoflatbuffers::ComponentEncode::vtable_encode(field, encoder, vtable_start, working_value)
-                    }
-               });
-                post_encode_match_cases.push(quote!{
-                    (#name::#variant_ident(field), #encode_working_value_enum_ident::#enum_arm_ident(working_value)) => {
-                        femtoflatbuffers::ComponentEncode::post_encode(field, encoder, working_value)?;
-                    }
-                });
-                vtable_decode_match_cases.push(quote!{
-                    #variant_id => {
-                        let (working_value, next_offset) = <#variant_type as femtoflatbuffers::ComponentDecode>::vtable_decode(decoder, table_start, vtable_entry+2)?;
-                        Ok((#decode_working_value_enum_ident::#enum_arm_ident(working_value), next_offset))
-                    }
-                });
-                decode_match_cases.push(quote!{
-                    #decode_working_value_enum_ident::#enum_arm_ident(inner_working_value) => {
-                        Ok(#name::#variant_ident(<#variant_type as femtoflatbuffers::ComponentDecode>::value_decode(decoder, inner_working_value)?))
-                    }
-                });
+            } else {
+                if variant.fields.is_empty() {
+                    // Skip for now
+                } else {
+                    let variant_field = variant.fields.iter().next().unwrap();
+                    let variant_type = &variant_field.ty;
+                    let enum_arm_ident = format_ident!("{}_arm", variant_ident);
+                    encode_working_value_enum_arms.push(quote!{
+                        #enum_arm_ident(<#variant_type as femtoflatbuffers::ComponentEncode>::WorkingValue)
+                    });
+                    decode_working_value_enum_arms.push(quote!{
+                        #enum_arm_ident(<#variant_type as femtoflatbuffers::ComponentDecode>::WorkingValue)
+                    });
+                    value_encode_match_cases.push(quote!{
+                        #name::#variant_ident(field, ..) => {
+                            let res = encoder.encode_u8(#variant_id)?;
+                            let value_res = femtoflatbuffers::ComponentEncode::value_encode(field, encoder, table_start)?;
+                            Ok(((table_start, res), #encode_working_value_enum_ident::#enum_arm_ident(value_res)))
+                        }
+                   });
+                    vtable_encode_match_cases.push(quote!{
+                        (#name::#variant_ident(field, ..), ((table_start, which_offset), #encode_working_value_enum_ident::#enum_arm_ident(working_value))) => {
+                            encoder.encode_u16((which_offset - table_start) as u16)?;
+                            femtoflatbuffers::ComponentEncode::vtable_encode(field, encoder, vtable_start, working_value)
+                        }
+                   });
+                    post_encode_match_cases.push(quote!{
+                        (#name::#variant_ident(field), #encode_working_value_enum_ident::#enum_arm_ident(working_value)) => {
+                            femtoflatbuffers::ComponentEncode::post_encode(field, encoder, working_value)?;
+                        }
+                    });
+                    vtable_decode_match_cases.push(quote!{
+                        #variant_id => {
+                            let (working_value, next_offset) = <#variant_type as femtoflatbuffers::ComponentDecode>::vtable_decode(decoder, table_start, vtable_entry+2)?;
+                            Ok((#decode_working_value_enum_ident::#enum_arm_ident(working_value), next_offset))
+                        }
+                    });
+                    decode_match_cases.push(quote!{
+                        #decode_working_value_enum_ident::#enum_arm_ident(inner_working_value) => {
+                            Ok(#name::#variant_ident(<#variant_type as femtoflatbuffers::ComponentDecode>::value_decode(decoder, inner_working_value)?))
+                        }
+                    });
+                }
             }
             variant_id += 1;
         }
@@ -342,13 +350,11 @@ pub fn flatbuffers_union_derive(input: proc_macro::TokenStream) -> proc_macro::T
             }
         };
         expanded
-    }
-    else {
+    } else {
         panic!("Only enum are supported");
     };
     proc_macro::TokenStream::from(expanded)
 }
-
 
 #[cfg(test)]
 mod tests {}

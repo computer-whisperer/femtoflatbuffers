@@ -4,7 +4,7 @@
 extern crate alloc;
 
 #[cfg(feature = "heapless")]
-use heapless;
+mod heapless_components;
 
 pub mod table;
 pub mod components;
@@ -25,7 +25,9 @@ pub enum DecodeError {
     #[error("Invalid data")]
     InvalidData,
     #[error("Unsupported Feature")]
-    UnsupportedFeature
+    UnsupportedFeature,
+    #[error("Collection Overflow")]
+    CollectionOverflow
 }
 
 pub struct Encoder<'a> {
@@ -51,6 +53,21 @@ impl<'a> Encoder<'a> {
         }
         self.used_bytes += padding;
         Ok(())
+    }
+
+    pub fn encode_u64(&mut self, value: u64) -> Result<u32, EncodeError> {
+        self.pad_to_align(8)?;
+        if self.buffer.len() - self.used_bytes < 8 {
+            return Err(EncodeError::OutOfSpace);
+        }
+        let offset = self.used_bytes as u32;
+        self.buffer[self.used_bytes..self.used_bytes+8].copy_from_slice(&value.to_le_bytes());
+        self.used_bytes += 8;
+        Ok(offset)
+    }
+
+    pub fn encode_i64(&mut self, value: i64) -> Result<u32, EncodeError> {
+        self.encode_u64(value as u64)
     }
 
     pub fn encode_u32(&mut self, value: u32) -> Result<u32, EncodeError> {
@@ -119,6 +136,20 @@ impl<'a> Decoder<'a> {
         Self {buffer}
     }
 
+    pub fn decode_u64(&self, offset: u32) -> Result<u64, DecodeError> {
+        if offset + 8 > self.buffer.len() as u32 {
+            Err(DecodeError::InvalidData)
+        } else {
+            Ok(u64::from_le_bytes(
+                self.buffer[offset as usize..offset as usize + 8].try_into().unwrap()
+            ))
+        }
+    }
+
+    pub fn decode_i64(&self, offset: u32) -> Result<i64, DecodeError> {
+        self.decode_u64(offset).map(|x| x as i64)
+    }
+
     pub fn decode_u32(&self, offset: u32) -> Result<u32, DecodeError> {
         if offset + 4 > self.buffer.len() as u32 {
             Err(DecodeError::InvalidData)
@@ -141,6 +172,10 @@ impl<'a> Decoder<'a> {
                 self.buffer[offset as usize..offset as usize + 2].try_into().unwrap()
             ))
         }
+    }
+
+    pub fn decode_i16(&self, offset: u32) -> Result<i16, DecodeError> {
+        self.decode_u16(offset).map(|x| x as i16)
     }
 
     pub fn decode_u8(&self, offset: u32) -> Result<u8, DecodeError> {
