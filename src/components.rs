@@ -58,14 +58,14 @@ impl <T: PrimitiveComponent> ComponentDecode for T {
         Ok(((table_start, vtable_entry_value), vtable_entry+2))
     }
     fn vector_len_decode(decoder: &Decoder, working_value: &Self::VectorWorkingValue) -> Result<usize, DecodeError> {
-        let vector_offset = (decoder.decode_i32(working_value.0 + working_value.1 as u32)? + working_value.0 as i32) as u32;
+        let vector_offset = (decoder.decode_i32(working_value.0 + working_value.1 as u32)? + working_value.0 as i32 + working_value.1 as i32) as u32;
         Ok(decoder.decode_u32(vector_offset)? as usize)
     }
     fn vector_value_decode(decoder: &Decoder, working_value: &Self::VectorWorkingValue, idx: usize) -> Result<Self, DecodeError>
     where
         Self: Sized
     {
-        let vector_offset = (decoder.decode_i32(working_value.0 + working_value.1 as u32)? + working_value.0 as i32) as u32;
+        let vector_offset = (decoder.decode_i32(working_value.0 + working_value.1 as u32)? + working_value.0 as i32 + working_value.1 as i32) as u32;
         T::do_decode(decoder, (vector_offset+4) + (idx*Self::size()) as u32)
     }
 }

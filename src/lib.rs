@@ -23,7 +23,9 @@ pub enum EncodeError {
 #[derive(thiserror::Error, Debug)]
 pub enum DecodeError {
     #[error("Invalid data")]
-    InvalidData
+    InvalidData,
+    #[error("Unsupported Feature")]
+    UnsupportedFeature
 }
 
 pub struct Encoder<'a> {

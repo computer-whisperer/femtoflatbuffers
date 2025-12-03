@@ -246,22 +246,22 @@ pub fn flatbuffers_union_derive(input: proc_macro::TokenStream) -> proc_macro::T
                 vtable_encode_match_cases.push(quote!{
                     (#name::#variant_ident(field, ..), ((table_start, which_offset), #encode_working_value_enum_ident::#enum_arm_ident(working_value))) => {
                         encoder.encode_u16((which_offset - table_start) as u16)?;
-                        femtoflatbuffers::ComponentEncode::vtable_encode(field, encoder, vtable_start, working_value)?;
+                        femtoflatbuffers::ComponentEncode::vtable_encode(field, encoder, vtable_start, working_value)
                     }
                });
                 post_encode_match_cases.push(quote!{
-                    (#name::#variant_ident(field, working_value), (_, #encode_working_value_enum_ident::#enum_arm_ident(tmp_value))) => {
+                    (#name::#variant_ident(field), #encode_working_value_enum_ident::#enum_arm_ident(working_value)) => {
                         femtoflatbuffers::ComponentEncode::post_encode(field, encoder, working_value)?;
                     }
                 });
                 vtable_decode_match_cases.push(quote!{
                     #variant_id => {
-                        let (next_offset, working_value) = femtoflatbuffers::ComponentDecode::vtable_decode(decoder, table_start, vtable_entry+2)?;
-                        Ok((next_offset, #decode_working_value_enum_ident::#enum_arm_ident(working_value)))
+                        let (working_value, next_offset) = <#variant_type as femtoflatbuffers::ComponentDecode>::vtable_decode(decoder, table_start, vtable_entry+2)?;
+                        Ok((#decode_working_value_enum_ident::#enum_arm_ident(working_value), next_offset))
                     }
                 });
                 decode_match_cases.push(quote!{
-                    #enum_arm_ident(inner_working_value) => {
+                    #decode_working_value_enum_ident::#enum_arm_ident(inner_working_value) => {
                         Ok(#name::#variant_ident(<#variant_type as femtoflatbuffers::ComponentDecode>::value_decode(decoder, inner_working_value)?))
                     }
                 });
@@ -271,6 +271,9 @@ pub fn flatbuffers_union_derive(input: proc_macro::TokenStream) -> proc_macro::T
         let expanded = quote! {
             enum #encode_working_value_enum_ident {
                 #(#encode_working_value_enum_arms,)*
+            }
+            enum #decode_working_value_enum_ident {
+                #(#decode_working_value_enum_arms,)*
             }
             impl #impl_generics femtoflatbuffers::ComponentEncode for #name #ty_generics #where_clause {
                 type WorkingValue = ((u32, u32), #encode_working_value_enum_ident);
@@ -293,7 +296,7 @@ pub fn flatbuffers_union_derive(input: proc_macro::TokenStream) -> proc_macro::T
                     }
                 }
                 fn post_encode(&self, encoder: &mut femtoflatbuffers::Encoder, working_value: &Self::WorkingValue) -> Result<(), femtoflatbuffers::EncodeError> {
-                    match (self, working_value.1) {
+                    match (self, &working_value.1) {
                         #(#post_encode_match_cases)*
                         _ => {}
                     }
@@ -303,23 +306,23 @@ pub fn flatbuffers_union_derive(input: proc_macro::TokenStream) -> proc_macro::T
             impl #impl_generics femtoflatbuffers::ComponentDecode for #name #ty_generics #where_clause {
                 type WorkingValue = #decode_working_value_enum_ident;
                 type VectorWorkingValue = ();
-                fn vtable_decode(decoder: &femtoflatbuffers::Decoder, table_start: u32, vtable_entry: u32) -> Result<(u32, Self::WorkingValue), femtoflatbuffers::DecodeError> {
+                fn vtable_decode(decoder: &femtoflatbuffers::Decoder, table_start: u32, vtable_entry: u32) -> Result<(Self::WorkingValue, u32), femtoflatbuffers::DecodeError> {
                     let which_offset = decoder.decode_u16(vtable_entry)?;
                     if which_offset != 0 {
                         let which_value = decoder.decode_u8((which_offset as u32) + table_start)?;
-                        let (next_offset, inner_working_value) = match which_value {
+                        let (inner_working_value, next_offset) = match which_value {
                             #(#vtable_decode_match_cases)*
                             _ => {
-                                Err(femtoflatbuffers::EncodeError::InvalidStructure)
+                                Err(femtoflatbuffers::DecodeError::InvalidData)
                             }
                         }?;
-                        Ok((next_offset, inner_working_value))
+                        Ok((inner_working_value, next_offset))
                     }
                     else {
-                        Err(femtoflatbuffers::EncodeError::InvalidStructure)
+                        Err(femtoflatbuffers::DecodeError::InvalidData)
                     }
                 }
-                fn value_decode(decoder: &femtoflatbuffers::Decoder, working_value: Self::WorkingValue) -> Result<Self, femtoflatbuffers::DecodeError> {
+                fn value_decode(decoder: &femtoflatbuffers::Decoder, working_value: &Self::WorkingValue) -> Result<Self, femtoflatbuffers::DecodeError> {
                     match working_value {
                         #(#decode_match_cases,)*
                         _ => {
@@ -327,14 +330,14 @@ pub fn flatbuffers_union_derive(input: proc_macro::TokenStream) -> proc_macro::T
                         }
                     }
                 }
-                fn vector_vtable_decode(decoder: &femtoflatbuffers::Decoder, table_start: u32, vtable_entry: u32) -> Result<(u32, Self::VectorWorkingValue), femtoflatbuffers::DecodeError> {
-                    Err(femtoflatbuffers::DecodeError::InvalidStructure)
+                fn vector_vtable_decode(decoder: &femtoflatbuffers::Decoder, table_start: u32, vtable_entry: u32) -> Result<(Self::VectorWorkingValue, u32), femtoflatbuffers::DecodeError> {
+                    Err(femtoflatbuffers::DecodeError::UnsupportedFeature)
                 }
                 fn vector_len_decode(decoder: &femtoflatbuffers::Decoder, working_value: &Self::VectorWorkingValue) -> Result<usize, femtoflatbuffers::DecodeError> {
-                    Err(femtoflatbuffers::DecodeError::InvalidStructure)
+                    Err(femtoflatbuffers::DecodeError::UnsupportedFeature)
                 }
                 fn vector_value_decode(decoder: &femtoflatbuffers::Decoder, working_value: &Self::VectorWorkingValue, idx: usize) -> Result<Self, femtoflatbuffers::DecodeError> {
-                    Err(femtoflatbuffers::DecodeError::InvalidStructure)
+                    Err(femtoflatbuffers::DecodeError::UnsupportedFeature)
                 }
             }
         };
