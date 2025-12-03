@@ -79,7 +79,7 @@ pub fn flatbuffers_table_derive(input: proc_macro::TokenStream) -> proc_macro::T
                 Ok(((table_start, vtable_entry_value), vtable_entry+2))
             }
             fn value_decode(decoder: &femtoflatbuffers::Decoder, working_value: &Self::WorkingValue) -> Result<Self, femtoflatbuffers::DecodeError> {
-                let #root_offset_ident = (working_value.0 as i32 + decoder.decode_i32(working_value.0 + working_value.1 as u32)?) as u32;
+                let #root_offset_ident = ((working_value.0 + working_value.1 as u32) as i32 + decoder.decode_i32(working_value.0 + working_value.1 as u32)?) as u32;
                 #decode
             }
             fn vector_vtable_decode(decoder: &Decoder, table_start: u32, vtable_entry: u32) -> Result<(Self::VectorWorkingValue, u32), femtoflatbuffers::DecodeError> {
@@ -198,18 +198,6 @@ fn do_decode_table(type_name: Ident, data: &Data, table_start_ident: Ident) -> T
     }
 }
 
-enum TestTest {
-    TEST1(u32),
-    TEST2(u32, u32)
-}
-
-fn test(test: TestTest) {
-    match test {
-        TestTest::TEST1(a) => println!("{:?}", a),
-        TestTest::TEST2(a, ..) => println!("{:?}", a)
-    }
-}
-
 #[proc_macro_derive(Union)]
 pub fn flatbuffers_union_derive(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
@@ -220,18 +208,21 @@ pub fn flatbuffers_union_derive(input: proc_macro::TokenStream) -> proc_macro::T
     let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
     let expanded = if let Data::Enum(ref data) = input.data {
         let mut variant_id = 0u8;
-        let mut fixit_enum_ident = format_ident!("FixItEnum{}", name);
-        let mut tmp_value_enum_arms = vec![];
+        let encode_working_value_enum_ident = format_ident!("EncodeWorkingValue{}", name);
+        let decode_working_value_enum_ident = format_ident!("DecodeWorkingValue{}", name);
+        let mut encode_working_value_enum_arms = vec![];
+        let mut decode_working_value_enum_arms = vec![];
         let mut value_encode_match_cases = vec![];
+        let mut vtable_encode_match_cases = vec![];
         let mut post_encode_match_cases = vec![];
+        let mut vtable_decode_match_cases = vec![];
         let mut decode_match_cases = vec![];
         for variant in &data.variants {
             let variant_ident = variant.ident.clone();
             if variant_id == 0 {
                 value_encode_match_cases.push(quote!{
                     #name::#variant_ident => {
-                        let res = encoder.encode_u8(#variant_id)?;
-                        (res, None)
+                        Err(femtoflatbuffers::EncodeError::InvalidStructure)
                     }
                 });
             }
@@ -239,43 +230,70 @@ pub fn flatbuffers_union_derive(input: proc_macro::TokenStream) -> proc_macro::T
                 let variant_field = variant.fields.iter().next().unwrap();
                 let variant_type = &variant_field.ty;
                 let enum_arm_ident = format_ident!("{}_arm", variant_ident);
-                tmp_value_enum_arms.push(quote!{
-                    #enum_arm_ident(<#variant_type as femtoflatbuffers::ComponentEncode>::TmpValue)
+                encode_working_value_enum_arms.push(quote!{
+                    #enum_arm_ident(<#variant_type as femtoflatbuffers::ComponentEncode>::WorkingValue)
+                });
+                decode_working_value_enum_arms.push(quote!{
+                    #enum_arm_ident(<#variant_type as femtoflatbuffers::ComponentDecode>::WorkingValue)
                 });
                 value_encode_match_cases.push(quote!{
                     #name::#variant_ident(field, ..) => {
                         let res = encoder.encode_u8(#variant_id)?;
-                        let value_res = femtoflatbuffers::ComponentEncode::value_encode(field, encoder)?;
-                        (res, Some(#fixit_enum_ident::#enum_arm_ident(value_res.unwrap().1)))
+                        let value_res = femtoflatbuffers::ComponentEncode::value_encode(field, encoder, table_start)?;
+                        Ok(((table_start, res), #encode_working_value_enum_ident::#enum_arm_ident(value_res)))
+                    }
+               });
+                vtable_encode_match_cases.push(quote!{
+                    (#name::#variant_ident(field, ..), ((table_start, which_offset), #encode_working_value_enum_ident::#enum_arm_ident(working_value))) => {
+                        encoder.encode_u16((which_offset - table_start) as u16)?;
+                        femtoflatbuffers::ComponentEncode::vtable_encode(field, encoder, vtable_start, working_value)?;
                     }
                });
                 post_encode_match_cases.push(quote!{
-                    (#name::#variant_ident(field, ..), Some(#fixit_enum_ident::#enum_arm_ident(tmp_value))) => {
-                        femtoflatbuffers::ComponentEncode::post_encode(field, encoder, tmp_value)?;
+                    (#name::#variant_ident(field, working_value), (_, #encode_working_value_enum_ident::#enum_arm_ident(tmp_value))) => {
+                        femtoflatbuffers::ComponentEncode::post_encode(field, encoder, working_value)?;
+                    }
+                });
+                vtable_decode_match_cases.push(quote!{
+                    #variant_id => {
+                        let (next_offset, working_value) = femtoflatbuffers::ComponentDecode::vtable_decode(decoder, table_start, vtable_entry+2)?;
+                        Ok((next_offset, #decode_working_value_enum_ident::#enum_arm_ident(working_value)))
                     }
                 });
                 decode_match_cases.push(quote!{
-                    #variant_id => {
-                        let offset = decoder.decode_u32(offset)?;
-                        femtoflatbuffers::ComponentDecode::value_decode(decoder, Some(offset + 4)).map(|field| #name::#variant_ident(field))
+                    #enum_arm_ident(inner_working_value) => {
+                        Ok(#name::#variant_ident(<#variant_type as femtoflatbuffers::ComponentDecode>::value_decode(decoder, inner_working_value)?))
                     }
                 });
             }
             variant_id += 1;
         }
         let expanded = quote! {
-            enum #fixit_enum_ident {
-                #(#tmp_value_enum_arms,)*
+            enum #encode_working_value_enum_ident {
+                #(#encode_working_value_enum_arms,)*
             }
             impl #impl_generics femtoflatbuffers::ComponentEncode for #name #ty_generics #where_clause {
-                type TmpValue = Option<#fixit_enum_ident>;
-                fn value_encode(&self, encoder: &mut femtoflatbuffers::Encoder) -> Result<Option<(u32, Self::TmpValue)>, femtoflatbuffers::EncodeError> {
-                    Ok(Some(match self {
+                type WorkingValue = ((u32, u32), #encode_working_value_enum_ident);
+                fn value_encode(&self, encoder: &mut femtoflatbuffers::Encoder, table_start: u32) -> Result<Self::WorkingValue, femtoflatbuffers::EncodeError> {
+                    match self {
                         #(#value_encode_match_cases)*
-                    }))
+                        _ => {
+                            Err(femtoflatbuffers::EncodeError::InvalidStructure)
+                        }
+                    }
                 }
-                fn post_encode(&self, encoder: &mut femtoflatbuffers::Encoder, tmp_value: Self::TmpValue) -> Result<(), femtoflatbuffers::EncodeError> {
-                    match (self, tmp_value) {
+                fn vtable_encode(&self, encoder: &mut femtoflatbuffers::Encoder, vtable_start: u32, working_value: &Self::WorkingValue) -> Result<(), femtoflatbuffers::EncodeError> {
+                    match (self, working_value) {
+                        #(#vtable_encode_match_cases)*
+                        _ => {
+                            encoder.encode_u16(0)?;
+                            encoder.encode_u16(0)?;
+                            Ok(())
+                        }
+                    }
+                }
+                fn post_encode(&self, encoder: &mut femtoflatbuffers::Encoder, working_value: &Self::WorkingValue) -> Result<(), femtoflatbuffers::EncodeError> {
+                    match (self, working_value.1) {
                         #(#post_encode_match_cases)*
                         _ => {}
                     }
@@ -283,31 +301,40 @@ pub fn flatbuffers_union_derive(input: proc_macro::TokenStream) -> proc_macro::T
                 }
             }
             impl #impl_generics femtoflatbuffers::ComponentDecode for #name #ty_generics #where_clause {
-                fn value_decode(decoder: &femtoflatbuffers::Decoder, offset: Option<u32>) -> Result<Self, femtoflatbuffers::DecodeError> {
-                    if let Some(offset) = offset {
-                        match decoder.decode_u8(offset)? {
-                            #(#decode_match_cases,)*
+                type WorkingValue = #decode_working_value_enum_ident;
+                type VectorWorkingValue = ();
+                fn vtable_decode(decoder: &femtoflatbuffers::Decoder, table_start: u32, vtable_entry: u32) -> Result<(u32, Self::WorkingValue), femtoflatbuffers::DecodeError> {
+                    let which_offset = decoder.decode_u16(vtable_entry)?;
+                    if which_offset != 0 {
+                        let which_value = decoder.decode_u8((which_offset as u32) + table_start)?;
+                        let (next_offset, inner_working_value) = match which_value {
+                            #(#vtable_decode_match_cases)*
                             _ => {
-                                Err(femtoflatbuffers::DecodeError::InvalidData)
+                                Err(femtoflatbuffers::EncodeError::InvalidStructure)
                             }
-                        }
+                        }?;
+                        Ok((next_offset, inner_working_value))
                     }
                     else {
-                        Err(femtoflatbuffers::DecodeError::InvalidData)
+                        Err(femtoflatbuffers::EncodeError::InvalidStructure)
                     }
                 }
-                fn table_value_size(decoder: &femtoflatbuffers::Decoder, table_value_global_offset: Option<u32>) -> Result<usize, femtoflatbuffers::DecodeError> {
-                    if let Some(offset) = table_value_global_offset {
-                        if decoder.decode_u8(offset)? == 0 {
-                            Ok(4)
-                        }
-                        else {
-                            Ok(8)
+                fn value_decode(decoder: &femtoflatbuffers::Decoder, working_value: Self::WorkingValue) -> Result<Self, femtoflatbuffers::DecodeError> {
+                    match working_value {
+                        #(#decode_match_cases,)*
+                        _ => {
+                            Err(femtoflatbuffers::DecodeError::InvalidData)
                         }
                     }
-                    else {
-                        Ok(0)
-                    }
+                }
+                fn vector_vtable_decode(decoder: &femtoflatbuffers::Decoder, table_start: u32, vtable_entry: u32) -> Result<(u32, Self::VectorWorkingValue), femtoflatbuffers::DecodeError> {
+                    Err(femtoflatbuffers::DecodeError::InvalidStructure)
+                }
+                fn vector_len_decode(decoder: &femtoflatbuffers::Decoder, working_value: &Self::VectorWorkingValue) -> Result<usize, femtoflatbuffers::DecodeError> {
+                    Err(femtoflatbuffers::DecodeError::InvalidStructure)
+                }
+                fn vector_value_decode(decoder: &femtoflatbuffers::Decoder, working_value: &Self::VectorWorkingValue, idx: usize) -> Result<Self, femtoflatbuffers::DecodeError> {
+                    Err(femtoflatbuffers::DecodeError::InvalidStructure)
                 }
             }
         };

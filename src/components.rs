@@ -180,7 +180,7 @@ impl <T: ComponentEncode> ComponentEncode for alloc::vec::Vec<T> {
     fn vtable_encode(&self, encoder: &mut Encoder, _vtable_start: u32, working_value: &Self::WorkingValue) -> Result<(), EncodeError> {
         match working_value {
             Some((table_start, value_offset)) => {
-                encoder.encode_u16((table_start - value_offset) as u16)?;
+                encoder.encode_u16((value_offset - table_start) as u16)?;
                 Ok(())
             }
             None => {
