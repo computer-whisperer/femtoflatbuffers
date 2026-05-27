@@ -230,15 +230,28 @@ pub fn flatbuffers_union_derive(input: proc_macro::TokenStream) -> proc_macro::T
         let mut post_encode_match_cases = vec![];
         let mut vtable_decode_match_cases = vec![];
         let mut decode_match_cases = vec![];
+        let mut none_arm_ident = None;
         for (variant_id, variant) in data.variants.iter().enumerate() {
             let variant_id = variant_id as u8;
             let variant_ident = variant.ident.clone();
             if variant_id == 0 {
+                // Variant 0 is the FlatBuffers `NONE` placeholder: type = 0, value
+                // omitted. Encode it as two absent vtable slots (handled by the `_`
+                // fallbacks below) and round-trip it as this unit variant.
+                let arm = format_ident!("{}_arm", variant_ident);
+                encode_working_value_enum_arms.push(quote! { #arm });
+                decode_working_value_enum_arms.push(quote! { #arm });
                 value_encode_match_cases.push(quote! {
                     #name::#variant_ident => {
-                        Err(femtoflatbuffers::EncodeError::InvalidStructure)
+                        Ok(((table_start, table_start), #encode_working_value_enum_ident::#arm))
                     }
                 });
+                decode_match_cases.push(quote! {
+                    #decode_working_value_enum_ident::#arm => {
+                        Ok(#name::#variant_ident)
+                    }
+                });
+                none_arm_ident = Some(arm);
             } else {
                 if variant.fields.is_empty() {
                     // Skip for now
@@ -284,6 +297,7 @@ pub fn flatbuffers_union_derive(input: proc_macro::TokenStream) -> proc_macro::T
                 }
             }
         }
+        let none_arm_ident = none_arm_ident.expect("a Union enum must have a first (NONE) variant");
         let expanded = quote! {
             #[allow(non_camel_case_types)]
             enum #encode_working_value_enum_ident {
@@ -326,19 +340,22 @@ pub fn flatbuffers_union_derive(input: proc_macro::TokenStream) -> proc_macro::T
                 type VectorWorkingValue = ();
                 fn vtable_decode(decoder: &femtoflatbuffers::Decoder, table_start: u32, vtable_entry: u32) -> Result<(Self::WorkingValue, u32), femtoflatbuffers::DecodeError> {
                     let which_offset = decoder.vtable_entry_at(table_start, vtable_entry)?;
-                    if which_offset != 0 {
-                        let which_value = decoder.decode_u8(femtoflatbuffers::Decoder::offset_add(table_start, which_offset as u32)?)?;
-                        let (inner_working_value, next_offset) = match which_value {
-                            #(#vtable_decode_match_cases)*
-                            _ => {
-                                Err(femtoflatbuffers::DecodeError::InvalidData)
-                            }
-                        }?;
-                        Ok((inner_working_value, next_offset))
+                    // The union occupies two vtable slots (type + value); advance past
+                    // both regardless of presence.
+                    if which_offset == 0 {
+                        // Type field absent => NONE.
+                        return Ok((#decode_working_value_enum_ident::#none_arm_ident, vtable_entry + 4));
                     }
-                    else {
-                        Err(femtoflatbuffers::DecodeError::InvalidData)
-                    }
+                    let which_value = decoder.decode_u8(femtoflatbuffers::Decoder::offset_add(table_start, which_offset as u32)?)?;
+                    let (inner_working_value, next_offset) = match which_value {
+                        // Type field present but 0 => NONE.
+                        0 => Ok((#decode_working_value_enum_ident::#none_arm_ident, vtable_entry + 4)),
+                        #(#vtable_decode_match_cases)*
+                        _ => {
+                            Err(femtoflatbuffers::DecodeError::InvalidData)
+                        }
+                    }?;
+                    Ok((inner_working_value, next_offset))
                 }
                 fn value_decode(decoder: &femtoflatbuffers::Decoder, working_value: &Self::WorkingValue) -> Result<Self, femtoflatbuffers::DecodeError> {
                     match working_value {

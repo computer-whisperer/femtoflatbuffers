@@ -150,8 +150,11 @@ This crate was written pre-documentation and has rough edges. As of this review:
   whose offsets all happen to be in range can still decode to attacker-controlled
   (but bounded, memory-safe) values. Treat decoded data as untrusted, as with any
   parser that lacks a full schema verifier. See `tests/hardening.rs`.
-- **Unions:** decoding the `NONE` case returns `InvalidData`; empty
-  (data-less) variants beyond `NONE` are skipped by the derive.
+- **Unions:** the `NONE` variant (variant 0) round-trips — it encodes as an absent
+  field and decodes from an absent/zero type, including when the whole union field
+  is omitted. Data-less variants *beyond* `NONE` are still skipped by the derive
+  (encoding them errors); FlatBuffers union members are always tables, so this
+  only affects malformed enums.
 - **Nested vectors are unsupported** (matches a FlatBuffers format restriction —
   wrap the inner vector in a table).
 

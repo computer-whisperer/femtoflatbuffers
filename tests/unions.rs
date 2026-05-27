@@ -16,8 +16,8 @@ struct Test2 {
 }
 
 // `NONE` is the conventional FlatBuffers union placeholder for the absent case;
-// the derive reserves variant 0 for it and never constructs it here.
-#[allow(dead_code, clippy::upper_case_acronyms)]
+// the derive reserves variant 0 for it.
+#[allow(clippy::upper_case_acronyms)]
 #[derive(Union, Debug)]
 enum TestUnion {
     NONE,
@@ -72,4 +72,57 @@ fn decode_test() {
     println!("{:x?}", encoded_test);
     let decoded_test = UnionTest::decode(&Decoder::new(encoded_test)).unwrap();
     println!("{:?}", decoded_test);
+}
+
+#[test]
+fn none_encode_femto_decode_flatc() {
+    let test = UnionTest {
+        a: TestUnion::NONE,
+        b: 7,
+    };
+
+    let mut buffer = [0u8; 1024];
+    let mut encoder = femtoflatbuffers::Encoder::new(&mut buffer);
+    test.encode(&mut encoder).unwrap();
+    let encoded = encoder.done();
+
+    let decoded = flatbuffers::root::<test::test::UnionTest>(encoded).unwrap();
+    assert_eq!(decoded.a_type(), test::test::TestUnion::NONE);
+    assert!(decoded.a().is_none());
+    assert_eq!(decoded.b(), 7);
+}
+
+#[test]
+fn none_decode_from_flatc() {
+    // A UnionTest with no union set at all: flatc leaves `a_type` at its NONE
+    // default and omits the value. femto should decode it as TestUnion::NONE.
+    let mut builder = flatbuffers::FlatBufferBuilder::new();
+    let encoded = {
+        let mut tb = test::test::UnionTestBuilder::new(&mut builder);
+        tb.add_b(7);
+        let table = tb.finish();
+        builder.finish(table, None);
+        builder.finished_data()
+    };
+
+    let decoded = UnionTest::decode(&Decoder::new(encoded)).unwrap();
+    assert!(matches!(decoded.a, TestUnion::NONE));
+    assert_eq!(decoded.b, 7);
+}
+
+#[test]
+fn none_round_trips_through_femto() {
+    let test = UnionTest {
+        a: TestUnion::NONE,
+        b: 99,
+    };
+
+    let mut buffer = [0u8; 256];
+    let mut encoder = femtoflatbuffers::Encoder::new(&mut buffer);
+    test.encode(&mut encoder).unwrap();
+    let encoded = encoder.done();
+
+    let decoded = UnionTest::decode(&Decoder::new(encoded)).unwrap();
+    assert!(matches!(decoded.a, TestUnion::NONE));
+    assert_eq!(decoded.b, 99);
 }
