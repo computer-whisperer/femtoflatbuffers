@@ -104,7 +104,10 @@ nested/variable data), and the vector variants add length-prefixed iteration.
 | `alloc`    |         | `Vec<T>` fields (requires a global allocator)                  |
 | `heapless` |         | `heapless::Vec<T, N>` and `heapless::String<N>` fields, fully heap-free |
 
-The crate is `#![no_std]` unconditionally; `alloc` only pulls in `extern crate alloc`.
+The crate is `#![no_std]` unconditionally; `alloc` only pulls in `extern crate
+alloc`. Dependencies are kept `no_std` too (`thiserror` is used with
+`default-features = false`), and CI builds the library for a bare-metal target
+(`thumbv7em-none-eabi`) to keep it that way.
 
 ## Supported types
 
@@ -146,18 +149,27 @@ This crate was written pre-documentation and has rough edges. As of this review:
 - **Nested vectors are unsupported** (matches a FlatBuffers format restriction —
   wrap the inner vector in a table).
 
-## Running the tests
+## Development
 
 ```sh
 cargo test                       # primitives, scalars, nesting, unions
 cargo test --features alloc      # + alloc Vec<T> and String
 cargo test --features heapless   # + heapless Vec<T, N> and String<N>
+
+cargo fmt --all
+cargo clippy --workspace --all-targets --all-features -- -D warnings
 ```
 
-The `tests/*_generated.rs` files are `flatc`-generated from the matching
-`tests/*.fbs` schemas (`test`, `string_test`, `scalars_test`) and are used to
-verify wire compatibility against the official `flatbuffers` crate in both
-directions.
+CI (`.github/workflows/ci.yml`) runs `fmt`, `clippy`, and `build` + `test`
+across the feature matrix (`no-features` / `alloc` / `heapless` / `all-features`),
+plus a bare-metal `no_std` build.
+
+The fixtures under `tests/generated/` are `flatc`-generated from the matching
+`*.fbs` schemas (`test`, `string_test`, `scalars_test`) and cross-check wire
+compatibility against the official `flatbuffers` crate in both directions. They
+live in a subdirectory so cargo does not treat them as standalone test binaries,
+and the `#[path]` includes silence lints on them. Note that `cargo fmt` reformats
+them, so after regenerating with `flatc`, run `cargo fmt` again.
 
 ## License
 

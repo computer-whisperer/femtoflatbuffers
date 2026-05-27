@@ -15,13 +15,18 @@ struct ScalarsTest {
     i: i8,
 }
 
-#[allow(dead_code, unused_imports)]
-#[path = "scalars_test_generated.rs"]
+#[allow(warnings, clippy::all)]
+#[path = "generated/scalars_test_generated.rs"]
 mod scalars_gen;
 
 // All fields use non-default values so flatc actually stores them; femto does
 // not yet synthesize omitted-default scalars on decode.
-const SAMPLE: ScalarsTest = ScalarsTest { f: 1.5, d: -2.25, b: true, i: -3 };
+const SAMPLE: ScalarsTest = ScalarsTest {
+    f: 1.5,
+    d: -2.25,
+    b: true,
+    i: -3,
+};
 
 #[test]
 fn encode_femto_decode_flatc() {
@@ -33,7 +38,7 @@ fn encode_femto_decode_flatc() {
     let decoded = scalars_gen::scalars_test::root_as_scalars_test(encoded).unwrap();
     assert_eq!(decoded.f(), 1.5);
     assert_eq!(decoded.d(), -2.25);
-    assert_eq!(decoded.b(), true);
+    assert!(decoded.b());
     assert_eq!(decoded.i(), -3);
 }
 
@@ -69,7 +74,15 @@ fn decode_flatc_omitting_trailing_defaults() {
     };
 
     let decoded = ScalarsTest::decode(&Decoder::new(encoded)).unwrap();
-    assert_eq!(decoded, ScalarsTest { f: 1.5, d: 0.0, b: false, i: 0 });
+    assert_eq!(
+        decoded,
+        ScalarsTest {
+            f: 1.5,
+            d: 0.0,
+            b: false,
+            i: 0
+        }
+    );
 }
 
 #[test]
@@ -87,14 +100,27 @@ fn decode_flatc_omitting_interior_defaults() {
     };
 
     let decoded = ScalarsTest::decode(&Decoder::new(encoded)).unwrap();
-    assert_eq!(decoded, ScalarsTest { f: 1.5, d: 0.0, b: false, i: -3 });
+    assert_eq!(
+        decoded,
+        ScalarsTest {
+            f: 1.5,
+            d: 0.0,
+            b: false,
+            i: -3
+        }
+    );
 }
 
 #[test]
 fn femto_round_trip_with_defaults() {
     // femto always writes every non-Option field, so a default-valued field
     // (b: false, i: 0) round-trips through femto's own encode/decode.
-    let original = ScalarsTest { f: 0.0, d: 3.0, b: false, i: 0 };
+    let original = ScalarsTest {
+        f: 0.0,
+        d: 3.0,
+        b: false,
+        i: 0,
+    };
 
     let mut buffer = [0u8; 256];
     let mut encoder = femtoflatbuffers::Encoder::new(&mut buffer);

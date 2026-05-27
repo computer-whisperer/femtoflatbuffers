@@ -6,10 +6,10 @@ extern crate alloc;
 #[cfg(feature = "heapless")]
 mod heapless_components;
 
-pub mod table;
 pub mod components;
+pub mod table;
 
-pub use components::{ComponentEncode, ComponentDecode};
+pub use components::{ComponentDecode, ComponentEncode};
 pub use femtoflatbuffers_derive::{Table, Union};
 
 #[derive(thiserror::Error, Debug)]
@@ -17,7 +17,7 @@ pub enum EncodeError {
     #[error("Not enough space in buffer")]
     OutOfSpace,
     #[error("Invalid structure")]
-    InvalidStructure
+    InvalidStructure,
 }
 
 #[derive(thiserror::Error, Debug)]
@@ -27,23 +27,26 @@ pub enum DecodeError {
     #[error("Unsupported Feature")]
     UnsupportedFeature,
     #[error("Collection Overflow")]
-    CollectionOverflow
+    CollectionOverflow,
 }
 
 pub struct Encoder<'a> {
     buffer: &'a mut [u8],
-    used_bytes: usize
+    used_bytes: usize,
 }
 
 impl<'a> Encoder<'a> {
     pub fn new(buffer: &'a mut [u8]) -> Self {
-        Self {buffer, used_bytes: 0}
+        Self {
+            buffer,
+            used_bytes: 0,
+        }
     }
     pub fn used_bytes(&self) -> u32 {
         self.used_bytes as u32
     }
     pub fn done(self) -> &'a [u8] {
-        &self.buffer[..self.used_bytes as usize]
+        &self.buffer[..self.used_bytes]
     }
 
     pub fn pad_to_align(&mut self, align: usize) -> Result<(), EncodeError> {
@@ -61,7 +64,7 @@ impl<'a> Encoder<'a> {
             return Err(EncodeError::OutOfSpace);
         }
         let offset = self.used_bytes as u32;
-        self.buffer[self.used_bytes..self.used_bytes+8].copy_from_slice(&value.to_le_bytes());
+        self.buffer[self.used_bytes..self.used_bytes + 8].copy_from_slice(&value.to_le_bytes());
         self.used_bytes += 8;
         Ok(offset)
     }
@@ -76,7 +79,7 @@ impl<'a> Encoder<'a> {
             return Err(EncodeError::OutOfSpace);
         }
         let offset = self.used_bytes as u32;
-        self.buffer[self.used_bytes..self.used_bytes+4].copy_from_slice(&value.to_le_bytes());
+        self.buffer[self.used_bytes..self.used_bytes + 4].copy_from_slice(&value.to_le_bytes());
         self.used_bytes += 4;
         Ok(offset)
     }
@@ -86,7 +89,7 @@ impl<'a> Encoder<'a> {
     }
 
     pub fn encode_u32_at(&mut self, offset: u32, value: u32) -> Result<(), EncodeError> {
-        self.buffer[offset as usize..offset as usize+4].copy_from_slice(&value.to_le_bytes());
+        self.buffer[offset as usize..offset as usize + 4].copy_from_slice(&value.to_le_bytes());
         Ok(())
     }
 
@@ -100,7 +103,7 @@ impl<'a> Encoder<'a> {
             return Err(EncodeError::OutOfSpace);
         }
         let offset = self.used_bytes as u32;
-        self.buffer[self.used_bytes..self.used_bytes+2].copy_from_slice(&value.to_le_bytes());
+        self.buffer[self.used_bytes..self.used_bytes + 2].copy_from_slice(&value.to_le_bytes());
         self.used_bytes += 2;
         Ok(offset)
     }
@@ -110,7 +113,7 @@ impl<'a> Encoder<'a> {
     }
 
     pub fn encode_u16_at(&mut self, offset: u32, value: u16) -> Result<(), EncodeError> {
-        self.buffer[offset as usize..offset as usize+2].copy_from_slice(&value.to_le_bytes());
+        self.buffer[offset as usize..offset as usize + 2].copy_from_slice(&value.to_le_bytes());
         Ok(())
     }
 
@@ -137,15 +140,13 @@ impl<'a> Encoder<'a> {
     }
 }
 
-
-
 pub struct Decoder<'a> {
     buffer: &'a [u8],
 }
 
 impl<'a> Decoder<'a> {
     pub fn new(buffer: &'a [u8]) -> Self {
-        Self {buffer}
+        Self { buffer }
     }
 
     pub fn decode_u64(&self, offset: u32) -> Result<u64, DecodeError> {
@@ -153,7 +154,9 @@ impl<'a> Decoder<'a> {
             Err(DecodeError::InvalidData)
         } else {
             Ok(u64::from_le_bytes(
-                self.buffer[offset as usize..offset as usize + 8].try_into().unwrap()
+                self.buffer[offset as usize..offset as usize + 8]
+                    .try_into()
+                    .unwrap(),
             ))
         }
     }
@@ -167,7 +170,9 @@ impl<'a> Decoder<'a> {
             Err(DecodeError::InvalidData)
         } else {
             Ok(u32::from_le_bytes(
-                self.buffer[offset as usize..offset as usize + 4].try_into().unwrap()
+                self.buffer[offset as usize..offset as usize + 4]
+                    .try_into()
+                    .unwrap(),
             ))
         }
     }
@@ -181,7 +186,9 @@ impl<'a> Decoder<'a> {
             Err(DecodeError::InvalidData)
         } else {
             Ok(u16::from_le_bytes(
-                self.buffer[offset as usize..offset as usize + 2].try_into().unwrap()
+                self.buffer[offset as usize..offset as usize + 2]
+                    .try_into()
+                    .unwrap(),
             ))
         }
     }

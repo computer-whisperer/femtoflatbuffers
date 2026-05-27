@@ -1,34 +1,30 @@
-use femtoflatbuffers::{Decoder, Table};
 use femtoflatbuffers::table::Table;
+use femtoflatbuffers::{Decoder, Table};
 
 #[derive(Table, Debug)]
 struct Test {
     a: u32,
     b: u32,
-    c: u32
+    c: u32,
 }
 
 #[derive(Table, Debug)]
 struct NestingTest {
     a: u32,
     b: u32,
-    c: Option<Test>
+    c: Option<Test>,
 }
 
-#[allow(dead_code, unused_imports)]
-#[path = "test_generated.rs"]
+#[allow(warnings, clippy::all)]
+#[path = "generated/test_generated.rs"]
 mod test;
 
 #[test]
 fn encode_test() {
-    let test = NestingTest{
+    let test = NestingTest {
         a: 1,
         b: 2,
-        c: Some(Test {
-            a: 3,
-            b: 4,
-            c: 5
-        })
+        c: Some(Test { a: 3, b: 4, c: 5 }),
     };
 
     let mut buffer = [0u8; 1024];
@@ -36,7 +32,7 @@ fn encode_test() {
     test.encode(&mut encoder).unwrap();
     let encoded = encoder.done();
     println!("{:x?}", encoded);
-    let decoded_test = flatbuffers::root::<test::test::NestingTest>(&encoded).unwrap();
+    let decoded_test = flatbuffers::root::<test::test::NestingTest>(encoded).unwrap();
     println!("{:?}", decoded_test);
 }
 
@@ -58,6 +54,6 @@ fn decode_test() {
         builder.finished_data()
     };
     println!("{:x?}", encoded_test);
-    let decoded_test = NestingTest::decode(&Decoder::new(&encoded_test)).unwrap();
+    let decoded_test = NestingTest::decode(&Decoder::new(encoded_test)).unwrap();
     println!("{:?}", decoded_test);
 }

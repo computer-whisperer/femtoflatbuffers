@@ -1,30 +1,31 @@
-use femtoflatbuffers::{Decoder, Table};
+//! alloc `Vec<T>` field tests, cross-checked against the `flatbuffers` crate.
+#![cfg(feature = "alloc")]
+
 use femtoflatbuffers::table::Table;
+use femtoflatbuffers::{Decoder, Table};
 
 #[derive(Table, Debug)]
 struct Test {
     a: u32,
     b: u32,
-    c: u32
+    c: u32,
 }
 
-#[cfg(feature = "alloc")]
 #[derive(Table, Debug)]
 struct ListTest {
     a: u32,
-    b: Vec<Test>
+    b: Vec<Test>,
 }
 
-#[allow(dead_code, unused_imports)]
-#[path = "test_generated.rs"]
+#[allow(warnings, clippy::all)]
+#[path = "generated/test_generated.rs"]
 mod test;
 
-#[cfg(feature = "alloc")]
 #[test]
 fn encode_test() {
-    let test = ListTest{
+    let test = ListTest {
         a: 1,
-        b: vec![Test{a: 2, b: 3, c: 4}, Test{a: 5, b: 6, c: 7}],
+        b: vec![Test { a: 2, b: 3, c: 4 }, Test { a: 5, b: 6, c: 7 }],
     };
 
     let mut buffer = [0u8; 1024];
@@ -33,14 +34,13 @@ fn encode_test() {
     let encoded = encoder.done();
     println!("{:x?}", encoded);
 
-    let decoded_test = flatbuffers::root::<test::test::ListTest>(&encoded).unwrap();
+    let decoded_test = flatbuffers::root::<test::test::ListTest>(encoded).unwrap();
     println!("{:?}", decoded_test);
 }
 
-#[cfg(feature = "alloc")]
 #[test]
 fn decode_test() {
-    let mut  builder = flatbuffers::FlatBufferBuilder::new();
+    let mut builder = flatbuffers::FlatBufferBuilder::new();
     let encoded_test = {
         let sub_a = {
             let mut table_builder = test::test::TestBuilder::new(&mut builder);
@@ -65,6 +65,6 @@ fn decode_test() {
         builder.finished_data()
     };
     println!("{:x?}", encoded_test);
-    let decoded_test = ListTest::decode(&Decoder::new(&encoded_test)).unwrap();
+    let decoded_test = ListTest::decode(&Decoder::new(encoded_test)).unwrap();
     println!("{:?}", decoded_test);
 }

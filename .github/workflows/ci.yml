@@ -1,0 +1,74 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  fmt:
+    name: Rustfmt
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - run: cargo fmt --all --check
+
+  clippy:
+    name: Clippy (${{ matrix.name }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: no-features,  flags: "" }
+          - { name: alloc,        flags: "--features alloc" }
+          - { name: heapless,     flags: "--features heapless" }
+          - { name: all-features, flags: "--all-features" }
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo clippy --workspace --all-targets ${{ matrix.flags }} --locked -- -D warnings
+
+  build-test:
+    name: Build + Test (${{ matrix.name }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: no-features,  flags: "" }
+          - { name: alloc,        flags: "--features alloc" }
+          - { name: heapless,     flags: "--features heapless" }
+          - { name: all-features, flags: "--all-features" }
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo build --workspace --all-targets ${{ matrix.flags }} --locked
+      - run: cargo test --workspace ${{ matrix.flags }} --locked
+
+  no-std:
+    name: no_std build (thumbv7em-none-eabi)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: thumbv7em-none-eabi
+      - uses: Swatinem/rust-cache@v2
+      # The test suite runs on the host, so it never exercises the no_std
+      # guarantee. Build the library for a bare-metal target to prove no std /
+      # allocator creeps back in via a dependency.
+      - run: cargo build -p femtoflatbuffers --lib --target thumbv7em-none-eabi --locked
+      - run: cargo build -p femtoflatbuffers --lib --target thumbv7em-none-eabi --features heapless --locked
+      - run: cargo build -p femtoflatbuffers --lib --target thumbv7em-none-eabi --features alloc --locked

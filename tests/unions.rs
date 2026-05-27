@@ -1,45 +1,44 @@
-use femtoflatbuffers::{Decoder, Table, Union};
 use femtoflatbuffers::table::Table;
+use femtoflatbuffers::{Decoder, Table, Union};
 
 #[derive(Table, Debug)]
 struct Test {
     a: u32,
     b: u32,
-    c: u32
+    c: u32,
 }
 
 #[derive(Table, Debug)]
 struct Test2 {
     d: u32,
     e: u32,
-    f: u32
+    f: u32,
 }
 
+// `NONE` is the conventional FlatBuffers union placeholder for the absent case;
+// the derive reserves variant 0 for it and never constructs it here.
+#[allow(dead_code, clippy::upper_case_acronyms)]
 #[derive(Union, Debug)]
 enum TestUnion {
     NONE,
     A(Test),
-    B(Test2)
+    B(Test2),
 }
 
 #[derive(Table, Debug)]
 struct UnionTest {
     a: TestUnion,
-    b: u32
+    b: u32,
 }
 
-#[allow(dead_code, unused_imports)]
-#[path = "test_generated.rs"]
+#[allow(warnings, clippy::all)]
+#[path = "generated/test_generated.rs"]
 mod test;
 
 #[test]
 fn encode_test() {
-    let test = UnionTest{
-        a: TestUnion::A(Test{
-            a: 1,
-            b: 2,
-            c: 3
-        }),
+    let test = UnionTest {
+        a: TestUnion::A(Test { a: 1, b: 2, c: 3 }),
         b: 2,
     };
 
@@ -49,13 +48,13 @@ fn encode_test() {
     let encoded = encoder.done();
     println!("{:x?}", encoded);
 
-    let decoded_test = flatbuffers::root::<test::test::UnionTest>(&encoded).unwrap();
+    let decoded_test = flatbuffers::root::<test::test::UnionTest>(encoded).unwrap();
     println!("{:?}", decoded_test);
 }
 
 #[test]
 fn decode_test() {
-    let mut  builder = flatbuffers::FlatBufferBuilder::new();
+    let mut builder = flatbuffers::FlatBufferBuilder::new();
     let encoded_test = {
         let mut table_builder = test::test::TestBuilder::new(&mut builder);
         table_builder.add_a(1);
@@ -71,6 +70,6 @@ fn decode_test() {
         builder.finished_data()
     };
     println!("{:x?}", encoded_test);
-    let decoded_test = UnionTest::decode(&Decoder::new(&encoded_test)).unwrap();
+    let decoded_test = UnionTest::decode(&Decoder::new(encoded_test)).unwrap();
     println!("{:?}", decoded_test);
 }

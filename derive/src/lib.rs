@@ -2,8 +2,6 @@ extern crate proc_macro;
 
 use proc_macro2::{Ident, TokenStream};
 use quote::{format_ident, quote};
-use std::env::var;
-use syn::token::Token;
 use syn::{Data, DeriveInput, parse_macro_input, parse_quote};
 
 fn add_trait_bounds(mut generics: syn::Generics) -> syn::Generics {
@@ -216,7 +214,6 @@ pub fn flatbuffers_union_derive(input: proc_macro::TokenStream) -> proc_macro::T
     let generics = add_trait_bounds(input.generics);
     let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
     let expanded = if let Data::Enum(ref data) = input.data {
-        let mut variant_id = 0u8;
         let encode_working_value_enum_ident = format_ident!("EncodeWorkingValue{}", name);
         let decode_working_value_enum_ident = format_ident!("DecodeWorkingValue{}", name);
         let mut encode_working_value_enum_arms = vec![];
@@ -226,7 +223,8 @@ pub fn flatbuffers_union_derive(input: proc_macro::TokenStream) -> proc_macro::T
         let mut post_encode_match_cases = vec![];
         let mut vtable_decode_match_cases = vec![];
         let mut decode_match_cases = vec![];
-        for variant in &data.variants {
+        for (variant_id, variant) in data.variants.iter().enumerate() {
+            let variant_id = variant_id as u8;
             let variant_ident = variant.ident.clone();
             if variant_id == 0 {
                 value_encode_match_cases.push(quote! {
@@ -278,12 +276,13 @@ pub fn flatbuffers_union_derive(input: proc_macro::TokenStream) -> proc_macro::T
                     });
                 }
             }
-            variant_id += 1;
         }
         let expanded = quote! {
+            #[allow(non_camel_case_types)]
             enum #encode_working_value_enum_ident {
                 #(#encode_working_value_enum_arms,)*
             }
+            #[allow(non_camel_case_types)]
             enum #decode_working_value_enum_ident {
                 #(#decode_working_value_enum_arms,)*
             }

@@ -13,13 +13,16 @@ struct StringTest {
     s: String,
 }
 
-#[allow(dead_code, unused_imports)]
-#[path = "string_test_generated.rs"]
+#[allow(warnings, clippy::all)]
+#[path = "generated/string_test_generated.rs"]
 mod string_gen;
 
 #[test]
 fn encode_femto_decode_flatc() {
-    let test = StringTest { a: 42, s: "héllo, 世界".to_string() };
+    let test = StringTest {
+        a: 42,
+        s: "héllo, 世界".to_string(),
+    };
 
     let mut buffer = [0u8; 256];
     let mut encoder = femtoflatbuffers::Encoder::new(&mut buffer);
@@ -45,12 +48,21 @@ fn encode_flatc_decode_femto() {
     };
 
     let decoded = StringTest::decode(&Decoder::new(encoded)).unwrap();
-    assert_eq!(decoded, StringTest { a: 42, s: "héllo, 世界".to_string() });
+    assert_eq!(
+        decoded,
+        StringTest {
+            a: 42,
+            s: "héllo, 世界".to_string()
+        }
+    );
 }
 
 #[test]
 fn empty_string_round_trips() {
-    let test = StringTest { a: 7, s: String::new() };
+    let test = StringTest {
+        a: 7,
+        s: String::new(),
+    };
 
     let mut buffer = [0u8; 256];
     let mut encoder = femtoflatbuffers::Encoder::new(&mut buffer);
@@ -58,5 +70,11 @@ fn empty_string_round_trips() {
     let encoded = encoder.done();
 
     let decoded = StringTest::decode(&Decoder::new(encoded)).unwrap();
-    assert_eq!(decoded, StringTest { a: 7, s: String::new() });
+    assert_eq!(
+        decoded,
+        StringTest {
+            a: 7,
+            s: String::new()
+        }
+    );
 }

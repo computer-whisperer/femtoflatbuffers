@@ -29,25 +29,28 @@ struct StringTest {
     s: heapless::String<32>,
 }
 
-#[allow(dead_code, unused_imports)]
-#[path = "test_generated.rs"]
+#[allow(warnings, clippy::all)]
+#[path = "generated/test_generated.rs"]
 mod test;
 
-#[allow(dead_code, unused_imports)]
-#[path = "string_test_generated.rs"]
+#[allow(warnings, clippy::all)]
+#[path = "generated/string_test_generated.rs"]
 mod string_gen;
 
 fn vec_of<T, const N: usize>(items: impl IntoIterator<Item = T>) -> heapless::Vec<T, N> {
     let mut v = heapless::Vec::new();
     for item in items {
-        v.push(item).ok().expect("heapless::Vec capacity exceeded in test setup");
+        v.push(item)
+            .ok()
+            .expect("heapless::Vec capacity exceeded in test setup");
     }
     v
 }
 
 fn string_of<const N: usize>(s: &str) -> heapless::String<N> {
     let mut out = heapless::String::new();
-    out.push_str(s).expect("heapless::String capacity exceeded in test setup");
+    out.push_str(s)
+        .expect("heapless::String capacity exceeded in test setup");
     out
 }
 
@@ -109,7 +112,10 @@ fn vec_encode_flatc_decode_femto() {
 
 #[test]
 fn vec_empty_round_trips() {
-    let test = ListTest { a: 9, b: vec_of::<Test, 8>([]) };
+    let test = ListTest {
+        a: 9,
+        b: vec_of::<Test, 8>([]),
+    };
 
     let mut buffer = [0u8; 256];
     let mut encoder = femtoflatbuffers::Encoder::new(&mut buffer);
@@ -125,7 +131,10 @@ fn vec_empty_round_trips() {
 
 #[test]
 fn string_encode_femto_decode_flatc() {
-    let test = StringTest { a: 42, s: string_of("hello") };
+    let test = StringTest {
+        a: 42,
+        s: string_of("hello"),
+    };
 
     let mut buffer = [0u8; 256];
     let mut encoder = femtoflatbuffers::Encoder::new(&mut buffer);
@@ -157,7 +166,10 @@ fn string_encode_flatc_decode_femto() {
 
 #[test]
 fn string_empty_round_trips() {
-    let test = StringTest { a: 7, s: string_of("") };
+    let test = StringTest {
+        a: 7,
+        s: string_of(""),
+    };
 
     let mut buffer = [0u8; 256];
     let mut encoder = femtoflatbuffers::Encoder::new(&mut buffer);
