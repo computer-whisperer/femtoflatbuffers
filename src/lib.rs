@@ -9,6 +9,8 @@ mod heapless_components;
 pub mod components;
 pub mod table;
 
+use core::cell::Cell;
+
 pub use components::{ComponentDecode, ComponentEncode};
 pub use femtoflatbuffers_derive::{Table, Union};
 
@@ -28,6 +30,8 @@ pub enum DecodeError {
     UnsupportedFeature,
     #[error("Collection Overflow")]
     CollectionOverflow,
+    #[error("Resource limit exceeded")]
+    ResourceLimit,
 }
 
 pub struct Encoder<'a> {
@@ -142,23 +146,55 @@ impl<'a> Encoder<'a> {
 
 pub struct Decoder<'a> {
     buffer: &'a [u8],
+    /// Current table-nesting depth; bounds recursion (see [`Decoder::enter_nested`]).
+    depth: Cell<u32>,
+    /// Remaining decode "work" units; bounds total tables + vector elements so a
+    /// crafted buffer cannot amplify into unbounded work/allocation.
+    budget: Cell<u32>,
+}
+
+/// Maximum nesting depth of tables/unions before decoding bails out.
+const MAX_DEPTH: u32 = 64;
+
+/// RAII token returned by [`Decoder::enter_nested`]; decrements the depth counter
+/// on drop so the count is restored on every exit path, including `?` returns.
+pub struct DepthGuard<'d> {
+    depth: &'d Cell<u32>,
+}
+
+impl Drop for DepthGuard<'_> {
+    fn drop(&mut self) {
+        self.depth.set(self.depth.get().saturating_sub(1));
+    }
 }
 
 impl<'a> Decoder<'a> {
     pub fn new(buffer: &'a [u8]) -> Self {
-        Self { buffer }
+        // Each table and each vector element consumes at least one buffer byte in
+        // a well-formed (non-aliased) buffer, so the byte length is a sound upper
+        // bound on legitimate decode work.
+        let budget = buffer.len().min(u32::MAX as usize) as u32;
+        Self {
+            buffer,
+            depth: Cell::new(0),
+            budget: Cell::new(budget),
+        }
+    }
+
+    /// Read `LEN` bytes at `offset`, returning `InvalidData` rather than panicking
+    /// for any out-of-range or overflowing offset.
+    fn read_bytes<const LEN: usize>(&self, offset: u32) -> Result<[u8; LEN], DecodeError> {
+        let start = offset as usize;
+        let end = start.checked_add(LEN).ok_or(DecodeError::InvalidData)?;
+        let slice = self
+            .buffer
+            .get(start..end)
+            .ok_or(DecodeError::InvalidData)?;
+        Ok(slice.try_into().unwrap())
     }
 
     pub fn decode_u64(&self, offset: u32) -> Result<u64, DecodeError> {
-        if offset + 8 > self.buffer.len() as u32 {
-            Err(DecodeError::InvalidData)
-        } else {
-            Ok(u64::from_le_bytes(
-                self.buffer[offset as usize..offset as usize + 8]
-                    .try_into()
-                    .unwrap(),
-            ))
-        }
+        Ok(u64::from_le_bytes(self.read_bytes::<8>(offset)?))
     }
 
     pub fn decode_i64(&self, offset: u32) -> Result<i64, DecodeError> {
@@ -166,15 +202,7 @@ impl<'a> Decoder<'a> {
     }
 
     pub fn decode_u32(&self, offset: u32) -> Result<u32, DecodeError> {
-        if offset + 4 > self.buffer.len() as u32 {
-            Err(DecodeError::InvalidData)
-        } else {
-            Ok(u32::from_le_bytes(
-                self.buffer[offset as usize..offset as usize + 4]
-                    .try_into()
-                    .unwrap(),
-            ))
-        }
+        Ok(u32::from_le_bytes(self.read_bytes::<4>(offset)?))
     }
 
     pub fn decode_i32(&self, offset: u32) -> Result<i32, DecodeError> {
@@ -182,15 +210,7 @@ impl<'a> Decoder<'a> {
     }
 
     pub fn decode_u16(&self, offset: u32) -> Result<u16, DecodeError> {
-        if offset + 2 > self.buffer.len() as u32 {
-            Err(DecodeError::InvalidData)
-        } else {
-            Ok(u16::from_le_bytes(
-                self.buffer[offset as usize..offset as usize + 2]
-                    .try_into()
-                    .unwrap(),
-            ))
-        }
+        Ok(u16::from_le_bytes(self.read_bytes::<2>(offset)?))
     }
 
     pub fn decode_i16(&self, offset: u32) -> Result<i16, DecodeError> {
@@ -198,11 +218,7 @@ impl<'a> Decoder<'a> {
     }
 
     pub fn decode_u8(&self, offset: u32) -> Result<u8, DecodeError> {
-        if offset + 1 > self.buffer.len() as u32 {
-            Err(DecodeError::InvalidData)
-        } else {
-            Ok(self.buffer[offset as usize])
-        }
+        Ok(self.read_bytes::<1>(offset)?[0])
     }
 
     pub fn decode_i8(&self, offset: u32) -> Result<i8, DecodeError> {
@@ -217,17 +233,86 @@ impl<'a> Decoder<'a> {
         self.decode_u64(offset).map(f64::from_bits)
     }
 
+    /// Follow a forward `uoffset` stored at `position`: returns `position + i32@position`,
+    /// range-checked to a valid `u32` so a malicious offset yields `InvalidData`
+    /// rather than overflowing.
+    pub fn follow_offset(&self, position: u32) -> Result<u32, DecodeError> {
+        let rel = self.decode_i32(position)?;
+        let target = position as i64 + rel as i64;
+        if !(0..=u32::MAX as i64).contains(&target) {
+            return Err(DecodeError::InvalidData);
+        }
+        Ok(target as u32)
+    }
+
+    /// Follow a backward `soffset` stored at `position`: returns `position - i32@position`,
+    /// range-checked. Used to reach a table's vtable.
+    pub fn follow_soffset(&self, position: u32) -> Result<u32, DecodeError> {
+        let rel = self.decode_i32(position)?;
+        let target = position as i64 - rel as i64;
+        if !(0..=u32::MAX as i64).contains(&target) {
+            return Err(DecodeError::InvalidData);
+        }
+        Ok(target as u32)
+    }
+
+    /// `base + delta`, range-checked to a valid `u32` offset.
+    pub fn offset_add(base: u32, delta: u32) -> Result<u32, DecodeError> {
+        base.checked_add(delta).ok_or(DecodeError::InvalidData)
+    }
+
+    /// Absolute offset of element `idx` (each `elem_size` bytes) within the vector
+    /// body beginning at `vector_offset`, whose first 4 bytes are the length
+    /// prefix. All arithmetic is checked, so any overflow yields `InvalidData`.
+    pub fn vector_element_offset(
+        vector_offset: u32,
+        idx: usize,
+        elem_size: usize,
+    ) -> Result<u32, DecodeError> {
+        let byte_idx = idx.checked_mul(elem_size).ok_or(DecodeError::InvalidData)?;
+        let from_start = byte_idx.checked_add(4).ok_or(DecodeError::InvalidData)?;
+        let delta = u32::try_from(from_start).map_err(|_| DecodeError::InvalidData)?;
+        Self::offset_add(vector_offset, delta)
+    }
+
     /// Read the vtable slot at absolute offset `vtable_entry` for the table at
     /// `table_start`. Returns `0` when the slot lies beyond that table's vtable,
     /// which is how a FlatBuffers writer signals a trailing field omitted
     /// because it held the default value. A stored `0` likewise means "absent".
     pub fn vtable_entry_at(&self, table_start: u32, vtable_entry: u32) -> Result<u16, DecodeError> {
-        let vtable_offset = (table_start as i32 - self.decode_i32(table_start)?) as u32;
+        let vtable_offset = self.follow_soffset(table_start)?;
         let vtable_size = self.decode_u16(vtable_offset)?;
-        if vtable_entry + 2 <= vtable_offset + vtable_size as u32 {
+        // Widen to u64 so the bound comparison cannot overflow.
+        if vtable_entry as u64 + 2 <= vtable_offset as u64 + vtable_size as u64 {
             self.decode_u16(vtable_entry)
         } else {
             Ok(0)
         }
+    }
+
+    /// Enter a nested table/union, bounding both recursion depth and total work.
+    /// The returned [`DepthGuard`] restores the depth on drop. Call once per table
+    /// body decoded.
+    pub fn enter_nested(&self) -> Result<DepthGuard<'_>, DecodeError> {
+        // A table is itself a unit of work.
+        self.consume_budget(1)?;
+        let depth = self.depth.get().saturating_add(1);
+        if depth > MAX_DEPTH {
+            return Err(DecodeError::ResourceLimit);
+        }
+        self.depth.set(depth);
+        Ok(DepthGuard { depth: &self.depth })
+    }
+
+    /// Consume `n` units from the decode work budget, erroring if it is exhausted.
+    /// Bounds total tables + vector elements (≈ buffer length), so a crafted buffer
+    /// that aliases offsets cannot amplify into unbounded work or allocation.
+    pub fn consume_budget(&self, n: u32) -> Result<(), DecodeError> {
+        let remaining = self.budget.get();
+        if n > remaining {
+            return Err(DecodeError::ResourceLimit);
+        }
+        self.budget.set(remaining - n);
+        Ok(())
     }
 }

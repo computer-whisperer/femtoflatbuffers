@@ -270,10 +270,8 @@ impl<T: PrimitiveComponent> ComponentDecode for T {
         if working_value.1 == 0 {
             Ok(T::default())
         } else {
-            Ok(T::do_decode(
-                decoder,
-                working_value.0 + working_value.1 as u32,
-            )?)
+            let field_offset = Decoder::offset_add(working_value.0, working_value.1 as u32)?;
+            T::do_decode(decoder, field_offset)
         }
     }
     fn vector_vtable_decode(
@@ -288,9 +286,8 @@ impl<T: PrimitiveComponent> ComponentDecode for T {
         decoder: &Decoder,
         working_value: &Self::VectorWorkingValue,
     ) -> Result<usize, DecodeError> {
-        let vector_offset = (decoder.decode_i32(working_value.0 + working_value.1 as u32)?
-            + working_value.0 as i32
-            + working_value.1 as i32) as u32;
+        let field_offset = Decoder::offset_add(working_value.0, working_value.1 as u32)?;
+        let vector_offset = decoder.follow_offset(field_offset)?;
         Ok(decoder.decode_u32(vector_offset)? as usize)
     }
     fn vector_value_decode(
@@ -301,10 +298,10 @@ impl<T: PrimitiveComponent> ComponentDecode for T {
     where
         Self: Sized,
     {
-        let vector_offset = (decoder.decode_i32(working_value.0 + working_value.1 as u32)?
-            + working_value.0 as i32
-            + working_value.1 as i32) as u32;
-        T::do_decode(decoder, (vector_offset + 4) + (idx * Self::size()) as u32)
+        let field_offset = Decoder::offset_add(working_value.0, working_value.1 as u32)?;
+        let vector_offset = decoder.follow_offset(field_offset)?;
+        let element_offset = Decoder::vector_element_offset(vector_offset, idx, Self::size())?;
+        T::do_decode(decoder, element_offset)
     }
 }
 
@@ -510,6 +507,9 @@ impl<T: ComponentDecode> ComponentDecode for alloc::vec::Vec<T> {
     ) -> Result<Self, DecodeError> {
         if let Some(working_value) = working_value {
             let vector_len = T::vector_len_decode(decoder, working_value)?;
+            // Bound the length by the work budget before allocating, so a buffer
+            // claiming a huge vector cannot trigger an oversized allocation.
+            decoder.consume_budget(u32::try_from(vector_len).unwrap_or(u32::MAX))?;
             let mut result = alloc::vec::Vec::with_capacity(vector_len);
             for idx in 0..vector_len {
                 result.push(T::vector_value_decode(decoder, working_value, idx)?);
@@ -623,13 +623,15 @@ impl ComponentDecode for alloc::string::String {
         if working_value.1 == 0 {
             Ok(alloc::string::String::new())
         } else {
-            let vector_offset = (decoder.decode_i32(working_value.0 + working_value.1 as u32)?
-                + working_value.0 as i32
-                + working_value.1 as i32) as u32;
+            let field_offset = Decoder::offset_add(working_value.0, working_value.1 as u32)?;
+            let vector_offset = decoder.follow_offset(field_offset)?;
             let vector_len = decoder.decode_u32(vector_offset)?;
+            // Bound the length by the work budget before allocating.
+            decoder.consume_budget(vector_len)?;
             let mut bytes = alloc::vec::Vec::with_capacity(vector_len as usize);
             for idx in 0..vector_len {
-                bytes.push(decoder.decode_u8(vector_offset + 4 + idx)?);
+                let byte_offset = Decoder::vector_element_offset(vector_offset, idx as usize, 1)?;
+                bytes.push(decoder.decode_u8(byte_offset)?);
             }
             alloc::string::String::from_utf8(bytes).map_err(|_| DecodeError::InvalidData)
         }

@@ -141,9 +141,15 @@ This crate was written pre-documentation and has rough edges. As of this review:
 - **Only the implicit zero/false default is supported.** Schemas that declare a
   non-zero scalar default cannot be expressed (there is no schema annotation in
   the Rust-as-schema model), so an omitted field always decodes to zero/false.
-- **Decoder trusts its input.** Bounds are checked per-read, but offset arithmetic
-  uses `as` casts and unchecked `+`, so adversarial/corrupt buffers can produce
-  wrong results rather than clean errors. Treat input as trusted.
+- **Decoded values from untrusted input may be attacker-chosen, but decoding is
+  memory-safe.** The decoder is hardened: every read is bounds-checked, all offset
+  arithmetic is overflow-checked, allocation and total work are bounded by the
+  buffer length, and recursion is capped (`MAX_DEPTH = 64`). So *no* input can
+  panic, over-allocate, hang, or overflow the stack — malformed buffers yield
+  `Err`. What it does *not* do is fully validate structure, so a crafted buffer
+  whose offsets all happen to be in range can still decode to attacker-controlled
+  (but bounded, memory-safe) values. Treat decoded data as untrusted, as with any
+  parser that lacks a full schema verifier. See `tests/hardening.rs`.
 - **Unions:** decoding the `NONE` case returns `InvalidData`; empty
   (data-less) variants beyond `NONE` are skipped by the derive.
 - **Nested vectors are unsupported** (matches a FlatBuffers format restriction —

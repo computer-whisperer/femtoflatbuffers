@@ -202,14 +202,16 @@ impl<const N: usize> ComponentDecode for heapless::string::String<N> {
         if working_value.1 == 0 {
             Ok(heapless::string::String::new())
         } else {
-            let vector_offset = (decoder.decode_i32(working_value.0 + working_value.1 as u32)?
-                + working_value.0 as i32
-                + working_value.1 as i32) as u32;
+            let field_offset = Decoder::offset_add(working_value.0, working_value.1 as u32)?;
+            let vector_offset = decoder.follow_offset(field_offset)?;
             let vector_len = decoder.decode_u32(vector_offset)?;
+            // The capacity is bounded by the const N, so no work-budget check is
+            // needed; the loop is capped at N regardless of the claimed length.
             let mut result = heapless::string::String::new();
             for idx in 0..vector_len.min(N as u32) {
+                let byte_offset = Decoder::vector_element_offset(vector_offset, idx as usize, 1)?;
                 if result
-                    .push(decoder.decode_u8(vector_offset + 4 + idx)? as char)
+                    .push(decoder.decode_u8(byte_offset)? as char)
                     .is_err()
                 {
                     return Err(DecodeError::CollectionOverflow);
