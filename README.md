@@ -108,30 +108,33 @@ The crate is `#![no_std]` unconditionally; `alloc` only pulls in `extern crate a
 
 ## Supported types
 
-- Integers: `u8`, `u16`/`i16`, `u32`/`i32`, `u64`/`i64`. (No `i8` impl — see
-  Limitations.)
+- Integers: `u8`/`i8`, `u16`/`i16`, `u32`/`i32`, `u64`/`i64`.
+- Floats: `f32`, `f64`.
+- `bool`.
 - `Option<T>` — maps to FlatBuffers' "field absent" (vtable entry `0`).
 - Nested tables via `#[derive(Table)]`.
 - Unions via `#[derive(Union)]` on an enum whose first variant is the `NONE`
   marker and whose remaining variants each wrap a single table type.
 - Vectors: `Vec<T>` (`alloc`) or `heapless::Vec<T, N>` (`heapless`).
-- Strings: `heapless::String<N>` (`heapless` only).
+- Strings: `String` (`alloc`) or `heapless::String<N>` (`heapless`).
 
 ## Known issues & limitations
 
 This crate was written pre-documentation and has rough edges. As of this review:
 
-- **No string support without `heapless`.** There is `Vec<T>` for `alloc` but no
-  `String`/`&str` impl for `alloc` or core. Strings are only available via
-  `heapless::String`.
-- **No floating-point support.** `f32`/`f64` are not implemented as primitives.
-- **No `bool` / `i8` primitive impls.** Only the integer types listed above
-  (`i8` is absent even though `u8` is present).
+- **`&str` is not supported**, only owned strings (`String` / `heapless::String`).
+- **`heapless::String` decode is not UTF-8 aware.** It copies bytes into chars
+  one-for-one (Latin-1), so non-ASCII text is mangled; the `alloc` `String` impl
+  decodes proper UTF-8. Encoding is correct for both.
 - **Vtables are not deduplicated.** The canonical format reuses one vtable across
   identical tables; here every table emits its own. Output is still valid, just
   larger.
-- **No default-value omission.** Non-`Option` scalar fields are always written,
-  even when equal to the schema default. The canonical writer omits defaults.
+- **No default-value handling.** femto always writes every non-`Option` field,
+  even at the schema default, where the canonical writer omits it. More
+  importantly the *decode* side has no default fallback: if a buffer from another
+  encoder omits a scalar (vtable entry `0`), femto reads from the wrong offset
+  rather than returning the default. Interop with default-omitting writers
+  therefore requires every scalar to be present, or the field to be `Option<T>`.
 - **Decoder trusts its input.** Bounds are checked per-read, but offset arithmetic
   uses `as` casts and unchecked `+`, so adversarial/corrupt buffers can produce
   wrong results rather than clean errors. Treat input as trusted.
@@ -143,14 +146,15 @@ This crate was written pre-documentation and has rough edges. As of this review:
 ## Running the tests
 
 ```sh
-cargo test                       # subset that needs no allocator
-cargo test --features alloc      # + alloc Vec<T> (vectors, nesting, unions)
+cargo test                       # primitives, scalars, nesting, unions
+cargo test --features alloc      # + alloc Vec<T> and String
 cargo test --features heapless   # + heapless Vec<T, N> and String<N>
 ```
 
-`tests/test_generated.rs` and `tests/string_test_generated.rs` are `flatc`-generated
-code (from `tests/test.fbs` and `tests/string_test.fbs`), used to verify wire
-compatibility against the official `flatbuffers` crate in both directions.
+The `tests/*_generated.rs` files are `flatc`-generated from the matching
+`tests/*.fbs` schemas (`test`, `string_test`, `scalars_test`) and are used to
+verify wire compatibility against the official `flatbuffers` crate in both
+directions.
 
 ## License
 

@@ -123,6 +123,18 @@ impl<'a> Encoder<'a> {
         self.used_bytes += 1;
         Ok(offset)
     }
+
+    pub fn encode_i8(&mut self, value: i8) -> Result<u32, EncodeError> {
+        self.encode_u8(value as u8)
+    }
+
+    pub fn encode_f32(&mut self, value: f32) -> Result<u32, EncodeError> {
+        self.encode_u32(value.to_bits())
+    }
+
+    pub fn encode_f64(&mut self, value: f64) -> Result<u32, EncodeError> {
+        self.encode_u64(value.to_bits())
+    }
 }
 
 
@@ -184,5 +196,17 @@ impl<'a> Decoder<'a> {
         } else {
             Ok(self.buffer[offset as usize])
         }
+    }
+
+    pub fn decode_i8(&self, offset: u32) -> Result<i8, DecodeError> {
+        self.decode_u8(offset).map(|x| x as i8)
+    }
+
+    pub fn decode_f32(&self, offset: u32) -> Result<f32, DecodeError> {
+        self.decode_u32(offset).map(f32::from_bits)
+    }
+
+    pub fn decode_f64(&self, offset: u32) -> Result<f64, DecodeError> {
+        self.decode_u64(offset).map(f64::from_bits)
     }
 }

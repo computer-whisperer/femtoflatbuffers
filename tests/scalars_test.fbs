@@ -1,0 +1,10 @@
+namespace ScalarsTest;
+
+table ScalarsTest {
+  f: float;
+  d: double;
+  b: bool;
+  i: byte;
+}
+
+root_type ScalarsTest;

@@ -73,6 +73,34 @@ impl PrimitiveComponent for u8 {
     fn do_decode(decoder: &Decoder, offset: u32) -> Result<Self, DecodeError> {Ok(decoder.decode_u8(offset)?)}
 }
 
+impl PrimitiveComponent for i8 {
+    fn alignment() -> usize {1}
+    fn size() -> usize {1}
+    fn do_encode(&self, encoder: &mut Encoder) -> Result<u32, EncodeError> {encoder.encode_i8(*self)}
+    fn do_decode(decoder: &Decoder, offset: u32) -> Result<Self, DecodeError> {Ok(decoder.decode_i8(offset)?)}
+}
+
+impl PrimitiveComponent for bool {
+    fn alignment() -> usize {1}
+    fn size() -> usize {1}
+    fn do_encode(&self, encoder: &mut Encoder) -> Result<u32, EncodeError> {encoder.encode_u8(*self as u8)}
+    fn do_decode(decoder: &Decoder, offset: u32) -> Result<Self, DecodeError> {Ok(decoder.decode_u8(offset)? != 0)}
+}
+
+impl PrimitiveComponent for f32 {
+    fn alignment() -> usize {4}
+    fn size() -> usize {4}
+    fn do_encode(&self, encoder: &mut Encoder) -> Result<u32, EncodeError> {encoder.encode_f32(*self)}
+    fn do_decode(decoder: &Decoder, offset: u32) -> Result<Self, DecodeError> {Ok(decoder.decode_f32(offset)?)}
+}
+
+impl PrimitiveComponent for f64 {
+    fn alignment() -> usize {8}
+    fn size() -> usize {8}
+    fn do_encode(&self, encoder: &mut Encoder) -> Result<u32, EncodeError> {encoder.encode_f64(*self)}
+    fn do_decode(decoder: &Decoder, offset: u32) -> Result<Self, DecodeError> {Ok(decoder.decode_f64(offset)?)}
+}
+
 impl <T: PrimitiveComponent> ComponentEncode for T {
     type WorkingValue = (u32, u32);
     fn value_encode(&self, encoder: &mut Encoder, table_start: u32) -> Result<Self::WorkingValue, EncodeError> {
@@ -296,5 +324,90 @@ impl <T: ComponentDecode> ComponentDecode for alloc::vec::Vec<T> {
         Self: Sized
     {
         Err(DecodeError::InvalidData)
+    }
+}
+
+#[cfg(feature = "alloc")]
+impl ComponentEncode for alloc::string::String {
+    type WorkingValue = Option<(u32, u32)>;
+
+    fn value_encode(&self, encoder: &mut Encoder, table_start: u32) -> Result<Self::WorkingValue, EncodeError> {
+        if !self.is_empty() {
+            let value_offset = encoder.encode_i32(0)?;
+            Ok(Some((table_start, value_offset)))
+        }
+        else {
+            Ok(None)
+        }
+    }
+
+    fn vtable_encode(&self, encoder: &mut Encoder, _vtable_start: u32, working_value: &Self::WorkingValue) -> Result<(), EncodeError> {
+        match working_value {
+            Some((table_start, value_offset)) => {
+                encoder.encode_u16((value_offset - table_start) as u16)?;
+                Ok(())
+            }
+            None => {
+                encoder.encode_u16(0)?;
+                Ok(())
+            }
+        }
+    }
+
+    fn post_encode(&self, encoder: &mut Encoder, working_value: &Self::WorkingValue) -> Result<(), EncodeError> {
+        if let Some((_table_start, value_offset)) = working_value {
+            let global_list_start = encoder.encode_u32(self.len() as u32)?;
+
+            for x in self.as_bytes() {
+                encoder.encode_u8(*x)?;
+            }
+            encoder.encode_u8(0)?;
+
+            encoder.encode_i32_at(*value_offset, (global_list_start - value_offset) as i32)?;
+            Ok(())
+        }
+        else {
+            Ok(())
+        }
+    }
+}
+
+#[cfg(feature = "alloc")]
+impl ComponentDecode for alloc::string::String {
+    type WorkingValue = (u32, u16);
+    type VectorWorkingValue = (); // Strings cannot be nested inside vectors as a working value
+
+    fn vtable_decode(decoder: &Decoder, table_start: u32, vtable_entry: u32) -> Result<(Self::WorkingValue, u32), DecodeError> {
+        let vtable_value = decoder.decode_u16(vtable_entry)?;
+        Ok(((table_start, vtable_value), vtable_entry+2))
+    }
+    fn value_decode(decoder: &Decoder, working_value: &Self::WorkingValue) -> Result<Self, DecodeError> {
+        if working_value.1 == 0 {
+            Ok(alloc::string::String::new())
+        }
+        else {
+            let vector_offset = (decoder.decode_i32(working_value.0 + working_value.1 as u32)? + working_value.0 as i32 + working_value.1 as i32) as u32;
+            let vector_len = decoder.decode_u32(vector_offset)?;
+            let mut bytes = alloc::vec::Vec::with_capacity(vector_len as usize);
+            for idx in 0..vector_len {
+                bytes.push(decoder.decode_u8(vector_offset + 4 + idx)?);
+            }
+            alloc::string::String::from_utf8(bytes).map_err(|_| DecodeError::InvalidData)
+        }
+    }
+
+    fn vector_vtable_decode(_decoder: &Decoder, _table_start: u32, _vtable_entry: u32) -> Result<(Self::VectorWorkingValue, u32), DecodeError> {
+        Err(DecodeError::UnsupportedFeature)
+    }
+
+    fn vector_len_decode(_decoder: &Decoder, _working_value: &Self::VectorWorkingValue) -> Result<usize, DecodeError> {
+        Err(DecodeError::UnsupportedFeature)
+    }
+
+    fn vector_value_decode(_decoder: &Decoder, _working_value: &Self::VectorWorkingValue, _idx: usize) -> Result<Self, DecodeError>
+    where
+        Self: Sized
+    {
+        Err(DecodeError::UnsupportedFeature)
     }
 }
