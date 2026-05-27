@@ -121,9 +121,6 @@ The crate is `#![no_std]` unconditionally; `alloc` only pulls in `extern crate a
 
 This crate was written pre-documentation and has rough edges. As of this review:
 
-- **`heapless` support is unverified at runtime.** It now compiles, but there are
-  no tests exercising `heapless::Vec`/`String` encode/decode, so correctness on
-  that path is untested.
 - **No string support without `heapless`.** There is `Vec<T>` for `alloc` but no
   `String`/`&str` impl for `alloc` or core. Strings are only available via
   `heapless::String`.
@@ -146,12 +143,14 @@ This crate was written pre-documentation and has rough edges. As of this review:
 ## Running the tests
 
 ```sh
-cargo test --features alloc      # primitives, nesting, unions, vectors
 cargo test                       # subset that needs no allocator
+cargo test --features alloc      # + alloc Vec<T> (vectors, nesting, unions)
+cargo test --features heapless   # + heapless Vec<T, N> and String<N>
 ```
 
-`tests/test_generated.rs` is `flatc`-generated code from `tests/test.fbs`, used to
-verify wire compatibility in both directions.
+`tests/test_generated.rs` and `tests/string_test_generated.rs` are `flatc`-generated
+code (from `tests/test.fbs` and `tests/string_test.fbs`), used to verify wire
+compatibility against the official `flatbuffers` crate in both directions.
 
 ## License
 

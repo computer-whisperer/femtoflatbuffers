@@ -1,0 +1,8 @@
+namespace StringTest;
+
+table StringTest {
+  a: uint;
+  s: string;
+}
+
+root_type StringTest;
