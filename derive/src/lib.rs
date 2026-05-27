@@ -87,14 +87,14 @@ pub fn flatbuffers_table_derive(input: proc_macro::TokenStream) -> proc_macro::T
                 Ok(((table_start, vtable_entry_value), vtable_entry+2))
             }
             fn vector_len_decode(decoder: &femtoflatbuffers::Decoder, working_value: &Self::VectorWorkingValue) -> Result<usize, femtoflatbuffers::DecodeError> {
-                let vector_offset = (decoder.decode_i32(working_value.0 + working_value.1 as u32)? + working_value.0 as i32) as u32;
+                let vector_offset = (decoder.decode_i32(working_value.0 + working_value.1 as u32)? + working_value.0 as i32 + working_value.1 as i32) as u32;
                 Ok(decoder.decode_u32(vector_offset)? as usize)
             }
             fn vector_value_decode(decoder: &femtoflatbuffers::Decoder, working_value: &Self::VectorWorkingValue, idx: usize) -> Result<Self, femtoflatbuffers::DecodeError>
             where
                 Self: Sized
             {
-                let vector_offset = (decoder.decode_i32(working_value.0 + working_value.1 as u32)? + working_value.0 as i32) as u32;
+                let vector_offset = (decoder.decode_i32(working_value.0 + working_value.1 as u32)? + working_value.0 as i32 + working_value.1 as i32) as u32;
                 let vector_entry_offset = (vector_offset+4) + (idx*4) as u32;
                 let #root_offset_ident = (vector_entry_offset as i32 + decoder.decode_i32(vector_entry_offset)?) as u32;
                 #decode

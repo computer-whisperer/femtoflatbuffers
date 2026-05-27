@@ -125,8 +125,8 @@ impl <const N: usize> ComponentEncode for heapless::string::String<N> {
         if let Some((_table_start, value_offset)) = working_value {
             let global_list_start = encoder.encode_u32(self.len() as u32)?;
 
-            for x in self.iter() {
-                encoder.encode_u8(x)?;
+            for x in self.as_bytes() {
+                encoder.encode_u8(*x)?;
             }
             encoder.encode_u8(0)?;
 

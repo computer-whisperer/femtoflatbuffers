@@ -1,1 +1,7 @@
-/*/target
+# Rust build artifacts (root and nested crates, e.g. derive/)
+/target
+**/target
+
+# IDE / editor
+/.idea
+*.swp
