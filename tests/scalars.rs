@@ -56,6 +56,41 @@ fn encode_flatc_decode_femto() {
 }
 
 #[test]
+fn decode_flatc_omitting_trailing_defaults() {
+    // flatc writes only `f`; d/b/i hold their defaults and are dropped from the
+    // tail of the vtable entirely, so the vtable is shorter than the field count.
+    let mut builder = flatbuffers::FlatBufferBuilder::new();
+    let encoded = {
+        let mut tb = scalars_gen::scalars_test::ScalarsTestBuilder::new(&mut builder);
+        tb.add_f(1.5);
+        let table = tb.finish();
+        builder.finish(table, None);
+        builder.finished_data()
+    };
+
+    let decoded = ScalarsTest::decode(&Decoder::new(encoded)).unwrap();
+    assert_eq!(decoded, ScalarsTest { f: 1.5, d: 0.0, b: false, i: 0 });
+}
+
+#[test]
+fn decode_flatc_omitting_interior_defaults() {
+    // flatc writes `f` and `i` but not `d`/`b`; since `i` follows them, the
+    // omitted fields appear as zero vtable entries rather than truncation.
+    let mut builder = flatbuffers::FlatBufferBuilder::new();
+    let encoded = {
+        let mut tb = scalars_gen::scalars_test::ScalarsTestBuilder::new(&mut builder);
+        tb.add_f(1.5);
+        tb.add_i(-3);
+        let table = tb.finish();
+        builder.finish(table, None);
+        builder.finished_data()
+    };
+
+    let decoded = ScalarsTest::decode(&Decoder::new(encoded)).unwrap();
+    assert_eq!(decoded, ScalarsTest { f: 1.5, d: 0.0, b: false, i: -3 });
+}
+
+#[test]
 fn femto_round_trip_with_defaults() {
     // femto always writes every non-Option field, so a default-valued field
     // (b: false, i: 0) round-trips through femto's own encode/decode.

@@ -17,7 +17,9 @@ pub trait ComponentDecode {
     fn vector_value_decode(decoder: &Decoder, working_value: &Self::VectorWorkingValue, idx: usize) -> Result<Self, DecodeError> where Self: Sized;
 }
 
-pub trait PrimitiveComponent {
+// `Default` is required so that a field omitted by the writer (absent vtable
+// entry) decodes to the FlatBuffers default — zero/false for every primitive.
+pub trait PrimitiveComponent: Default {
     fn alignment() -> usize;
     fn size() -> usize;
     fn do_encode(&self, encoder: &mut Encoder) -> Result<u32, EncodeError>;
@@ -117,14 +119,19 @@ impl <T: PrimitiveComponent> ComponentDecode for T {
     type WorkingValue = (u32, u16);
     type VectorWorkingValue = Self::WorkingValue;
     fn vtable_decode(decoder: &Decoder, table_start: u32, vtable_entry: u32) -> Result<(Self::WorkingValue, u32), DecodeError> {
-        let vtable_entry_value = decoder.decode_u16(vtable_entry)?;
+        let vtable_entry_value = decoder.vtable_entry_at(table_start, vtable_entry)?;
         Ok(((table_start, vtable_entry_value), vtable_entry+2))
     }
     fn value_decode(decoder: &Decoder, working_value: &Self::WorkingValue) -> Result<Self, DecodeError> {
-        Ok(T::do_decode(decoder, working_value.0 + working_value.1 as u32)?)
+        // A zero entry means the writer omitted this field; decode to the default.
+        if working_value.1 == 0 {
+            Ok(T::default())
+        } else {
+            Ok(T::do_decode(decoder, working_value.0 + working_value.1 as u32)?)
+        }
     }
     fn vector_vtable_decode(decoder: &Decoder, table_start: u32, vtable_entry: u32) -> Result<(Self::VectorWorkingValue, u32), DecodeError> {
-        let vtable_entry_value = decoder.decode_u16(vtable_entry)?;
+        let vtable_entry_value = decoder.vtable_entry_at(table_start, vtable_entry)?;
         Ok(((table_start, vtable_entry_value), vtable_entry+2))
     }
     fn vector_len_decode(decoder: &Decoder, working_value: &Self::VectorWorkingValue) -> Result<usize, DecodeError> {
@@ -183,7 +190,7 @@ impl <T: ComponentDecode> ComponentDecode for Option<T> {
     type WorkingValue = Option<T::WorkingValue>;
     type VectorWorkingValue = Option<T::VectorWorkingValue>;
     fn vtable_decode(decoder: &Decoder, table_start: u32, vtable_entry: u32) -> Result<(Self::WorkingValue, u32), DecodeError> {
-        let value = decoder.decode_u16(vtable_entry)?;
+        let value = decoder.vtable_entry_at(table_start, vtable_entry)?;
         match value {
             0 => Ok((None, vtable_entry+2)),
             _ => {
@@ -199,7 +206,7 @@ impl <T: ComponentDecode> ComponentDecode for Option<T> {
         }
     }
     fn vector_vtable_decode(decoder: &Decoder, table_start: u32, vtable_entry: u32) -> Result<(Self::VectorWorkingValue, u32), DecodeError> {
-        let value = decoder.decode_u16(vtable_entry)?;
+        let value = decoder.vtable_entry_at(table_start, vtable_entry)?;
         match value {
             0 => Ok((None, vtable_entry+2)),
             _ => {
@@ -289,7 +296,7 @@ impl <T: ComponentDecode> ComponentDecode for alloc::vec::Vec<T> {
     type VectorWorkingValue = (); // Nested vectors are not supported by flatbuffers
     
     fn vtable_decode(decoder: &Decoder, table_start: u32, vtable_entry: u32) -> Result<(Self::WorkingValue, u32), DecodeError> {
-        let vtable_value = decoder.decode_u16(vtable_entry)?;
+        let vtable_value = decoder.vtable_entry_at(table_start, vtable_entry)?;
         if vtable_value == 0 {
             Ok((None, vtable_entry+2))
         }
@@ -378,7 +385,7 @@ impl ComponentDecode for alloc::string::String {
     type VectorWorkingValue = (); // Strings cannot be nested inside vectors as a working value
 
     fn vtable_decode(decoder: &Decoder, table_start: u32, vtable_entry: u32) -> Result<(Self::WorkingValue, u32), DecodeError> {
-        let vtable_value = decoder.decode_u16(vtable_entry)?;
+        let vtable_value = decoder.vtable_entry_at(table_start, vtable_entry)?;
         Ok(((table_start, vtable_value), vtable_entry+2))
     }
     fn value_decode(decoder: &Decoder, working_value: &Self::WorkingValue) -> Result<Self, DecodeError> {

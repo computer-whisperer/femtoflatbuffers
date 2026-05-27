@@ -56,7 +56,7 @@ impl <T: ComponentDecode, const N: usize> ComponentDecode for heapless::vec::Vec
     type VectorWorkingValue = (); // Nested vectors are not supported by flatbuffers
 
     fn vtable_decode(decoder: &Decoder, table_start: u32, vtable_entry: u32) -> Result<(Self::WorkingValue, u32), DecodeError> {
-        let vtable_value = decoder.decode_u16(vtable_entry)?;
+        let vtable_value = decoder.vtable_entry_at(table_start, vtable_entry)?;
         if vtable_value == 0 {
             Ok((None, vtable_entry+2))
         }
@@ -145,7 +145,7 @@ impl <const N: usize> ComponentDecode for heapless::string::String<N> {
     type VectorWorkingValue = (); // Nested vectors are not supported by flatbuffers
 
     fn vtable_decode(decoder: &Decoder, table_start: u32, vtable_entry: u32) -> Result<(Self::WorkingValue, u32), DecodeError> {
-        let vtable_value = decoder.decode_u16(vtable_entry)?;
+        let vtable_value = decoder.vtable_entry_at(table_start, vtable_entry)?;
         Ok(((table_start, vtable_value), vtable_entry+2))
     }
     fn value_decode(decoder: &Decoder, working_value: &Self::WorkingValue) -> Result<Self, DecodeError> {

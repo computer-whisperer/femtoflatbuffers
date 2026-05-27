@@ -129,12 +129,15 @@ This crate was written pre-documentation and has rough edges. As of this review:
 - **Vtables are not deduplicated.** The canonical format reuses one vtable across
   identical tables; here every table emits its own. Output is still valid, just
   larger.
-- **No default-value handling.** femto always writes every non-`Option` field,
-  even at the schema default, where the canonical writer omits it. More
-  importantly the *decode* side has no default fallback: if a buffer from another
-  encoder omits a scalar (vtable entry `0`), femto reads from the wrong offset
-  rather than returning the default. Interop with default-omitting writers
-  therefore requires every scalar to be present, or the field to be `Option<T>`.
+- **Defaults are not omitted on encode.** femto always writes every non-`Option`
+  field, even at the schema default, where the canonical writer omits it. Output
+  is valid (and decodes fine), just larger. *Decoding* an omitted field is
+  handled correctly: a zero vtable entry or a truncated vtable yields the
+  type's default (zero/false) for scalars, `None` for `Option<T>`, and an empty
+  collection for vectors/strings.
+- **Only the implicit zero/false default is supported.** Schemas that declare a
+  non-zero scalar default cannot be expressed (there is no schema annotation in
+  the Rust-as-schema model), so an omitted field always decodes to zero/false.
 - **Decoder trusts its input.** Bounds are checked per-read, but offset arithmetic
   uses `as` casts and unchecked `+`, so adversarial/corrupt buffers can produce
   wrong results rather than clean errors. Treat input as trusted.

@@ -75,15 +75,19 @@ pub fn flatbuffers_table_derive(input: proc_macro::TokenStream) -> proc_macro::T
             type WorkingValue = (u32, u16);
             type VectorWorkingValue = Self::WorkingValue;
             fn vtable_decode(decoder: &femtoflatbuffers::Decoder, table_start: u32, vtable_entry: u32) -> Result<(Self::WorkingValue, u32), femtoflatbuffers::DecodeError> {
-                let vtable_entry_value = decoder.decode_u16(vtable_entry)?;
+                let vtable_entry_value = decoder.vtable_entry_at(table_start, vtable_entry)?;
                 Ok(((table_start, vtable_entry_value), vtable_entry+2))
             }
             fn value_decode(decoder: &femtoflatbuffers::Decoder, working_value: &Self::WorkingValue) -> Result<Self, femtoflatbuffers::DecodeError> {
+                // A table reference has no default; an absent (zero) entry is unrepresentable.
+                if working_value.1 == 0 {
+                    return Err(femtoflatbuffers::DecodeError::InvalidData);
+                }
                 let #root_offset_ident = ((working_value.0 + working_value.1 as u32) as i32 + decoder.decode_i32(working_value.0 + working_value.1 as u32)?) as u32;
                 #decode
             }
             fn vector_vtable_decode(decoder: &femtoflatbuffers::Decoder, table_start: u32, vtable_entry: u32) -> Result<(Self::VectorWorkingValue, u32), femtoflatbuffers::DecodeError> {
-                let vtable_entry_value = decoder.decode_u16(vtable_entry)?;
+                let vtable_entry_value = decoder.vtable_entry_at(table_start, vtable_entry)?;
                 Ok(((table_start, vtable_entry_value), vtable_entry+2))
             }
             fn vector_len_decode(decoder: &femtoflatbuffers::Decoder, working_value: &Self::VectorWorkingValue) -> Result<usize, femtoflatbuffers::DecodeError> {
@@ -315,7 +319,7 @@ pub fn flatbuffers_union_derive(input: proc_macro::TokenStream) -> proc_macro::T
                 type WorkingValue = #decode_working_value_enum_ident;
                 type VectorWorkingValue = ();
                 fn vtable_decode(decoder: &femtoflatbuffers::Decoder, table_start: u32, vtable_entry: u32) -> Result<(Self::WorkingValue, u32), femtoflatbuffers::DecodeError> {
-                    let which_offset = decoder.decode_u16(vtable_entry)?;
+                    let which_offset = decoder.vtable_entry_at(table_start, vtable_entry)?;
                     if which_offset != 0 {
                         let which_value = decoder.decode_u8((which_offset as u32) + table_start)?;
                         let (inner_working_value, next_offset) = match which_value {

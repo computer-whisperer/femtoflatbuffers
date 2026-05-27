@@ -209,4 +209,18 @@ impl<'a> Decoder<'a> {
     pub fn decode_f64(&self, offset: u32) -> Result<f64, DecodeError> {
         self.decode_u64(offset).map(f64::from_bits)
     }
+
+    /// Read the vtable slot at absolute offset `vtable_entry` for the table at
+    /// `table_start`. Returns `0` when the slot lies beyond that table's vtable,
+    /// which is how a FlatBuffers writer signals a trailing field omitted
+    /// because it held the default value. A stored `0` likewise means "absent".
+    pub fn vtable_entry_at(&self, table_start: u32, vtable_entry: u32) -> Result<u16, DecodeError> {
+        let vtable_offset = (table_start as i32 - self.decode_i32(table_start)?) as u32;
+        let vtable_size = self.decode_u16(vtable_offset)?;
+        if vtable_entry + 2 <= vtable_offset + vtable_size as u32 {
+            self.decode_u16(vtable_entry)
+        } else {
+            Ok(0)
+        }
+    }
 }
