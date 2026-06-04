@@ -188,6 +188,83 @@ fn string_encode_flatc_decode_femto() {
 }
 
 #[test]
+fn string_non_ascii_encode_femto_decode_flatc() {
+    let test = StringTest {
+        a: 42,
+        s: string_of("héllo, 世界"),
+    };
+
+    let mut buffer = [0u8; 256];
+    let mut encoder = femtoflatbuffers::Encoder::new(&mut buffer);
+    test.encode(&mut encoder).unwrap();
+    let encoded = encoder.done();
+
+    let decoded = string_gen::string_test::root_as_string_test(encoded).unwrap();
+    assert_eq!(decoded.s(), Some("héllo, 世界"));
+}
+
+#[test]
+fn string_non_ascii_encode_flatc_decode_femto() {
+    let mut builder = flatbuffers::FlatBufferBuilder::new();
+    let encoded = {
+        let s = builder.create_string("héllo, 世界");
+        let mut tb = string_gen::string_test::StringTestBuilder::new(&mut builder);
+        tb.add_a(42);
+        tb.add_s(s);
+        let table = tb.finish();
+        builder.finish(table, None);
+        builder.finished_data()
+    };
+
+    let decoded = StringTest::decode(&Decoder::new(encoded)).unwrap();
+    assert_eq!(decoded.s.as_str(), "héllo, 世界");
+}
+
+// Like heapless::Vec, an over-capacity string truncates at N bytes...
+#[test]
+fn string_over_capacity_truncates() {
+    #[derive(Table, Debug)]
+    struct SmallStringTest {
+        a: u32,
+        s: heapless::String<4>,
+    }
+
+    let test = StringTest {
+        a: 1,
+        s: string_of("hello"),
+    };
+    let mut buffer = [0u8; 256];
+    let mut encoder = femtoflatbuffers::Encoder::new(&mut buffer);
+    test.encode(&mut encoder).unwrap();
+    let encoded = encoder.done();
+
+    let decoded = SmallStringTest::decode(&Decoder::new(encoded)).unwrap();
+    assert_eq!(decoded.s.as_str(), "hell");
+}
+
+// ...unless the truncation splits a multi-byte UTF-8 sequence, which fails
+// validation rather than yielding mangled text.
+#[test]
+fn string_truncation_splitting_utf8_errors() {
+    #[derive(Table, Debug)]
+    struct TinyStringTest {
+        a: u32,
+        s: heapless::String<2>,
+    }
+
+    let test = StringTest {
+        a: 1,
+        s: string_of("aé"), // 3 bytes: 0x61 0xC3 0xA9; byte 2 splits the é
+    };
+    let mut buffer = [0u8; 256];
+    let mut encoder = femtoflatbuffers::Encoder::new(&mut buffer);
+    test.encode(&mut encoder).unwrap();
+    let encoded = encoder.done();
+
+    assert!(TinyStringTest::decode(&Decoder::new(encoded)).is_err());
+}
+
+#[test]
 fn string_empty_round_trips() {
     let test = StringTest {
         a: 7,

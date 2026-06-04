@@ -128,9 +128,9 @@ alloc`. Dependencies are kept `no_std` too (`thiserror` is used with
 This crate was written pre-documentation and has rough edges. As of this review:
 
 - **`&str` is not supported**, only owned strings (`String` / `heapless::String`).
-- **`heapless::String` decode is not UTF-8 aware.** It copies bytes into chars
-  one-for-one (Latin-1), so non-ASCII text is mangled; the `alloc` `String` impl
-  decodes proper UTF-8. Encoding is correct for both.
+- **`heapless` collections silently truncate on decode.** A vector or string
+  longer than the fixed capacity `N` decodes to its first `N` elements/bytes
+  (a string truncation that would split a UTF-8 sequence errors instead).
 - **Vtables are not deduplicated.** The canonical format reuses one vtable across
   identical tables; here every table emits its own. Output is still valid, just
   larger.

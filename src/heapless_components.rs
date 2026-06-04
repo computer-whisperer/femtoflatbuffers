@@ -210,17 +210,15 @@ impl<const N: usize> ComponentDecode for heapless::string::String<N> {
             let vector_len = decoder.decode_u32(vector_offset)?;
             // The capacity is bounded by the const N, so no work-budget check is
             // needed; the loop is capped at N regardless of the claimed length.
-            let mut result = heapless::string::String::new();
+            // Like heapless::Vec, an over-long value is truncated at N bytes; a
+            // truncation that splits a UTF-8 sequence fails validation below.
+            let mut bytes = heapless::vec::Vec::<u8, N>::new();
             for idx in 0..vector_len.min(N as u32) {
                 let byte_offset = Decoder::vector_element_offset(vector_offset, idx as usize, 1)?;
-                if result
-                    .push(decoder.decode_u8(byte_offset)? as char)
-                    .is_err()
-                {
-                    return Err(DecodeError::CollectionOverflow);
-                }
+                // Cannot overflow: the loop is bounded by `.min(N)`.
+                let _ = bytes.push(decoder.decode_u8(byte_offset)?);
             }
-            Ok(result)
+            heapless::string::String::from_utf8(bytes).map_err(|_| DecodeError::InvalidData)
         }
     }
 
