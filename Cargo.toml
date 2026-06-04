@@ -2,11 +2,17 @@
 name = "femtoflatbuffers"
 version = "0.1.0"
 edition = "2024"
+description = "Tiny no_std, allocation-optional FlatBuffers encoder/decoder driven by derive macros instead of a schema compiler"
+readme = "README.md"
+license.workspace = true
+repository.workspace = true
+keywords = ["flatbuffers", "no-std", "serialization", "embedded", "derive"]
+categories = ["embedded", "encoding", "no-std", "no-std::no-alloc"]
 
 [dependencies]
-femtoflatbuffers-derive = {path = "derive"}
+femtoflatbuffers-derive = { version = "0.1.0", path = "derive" }
 thiserror = { version = "2.0.18", default-features = false }
-heapless = {version = "0.9.3", optional = true}
+heapless = { version = "0.9.3", optional = true }
 
 [dev-dependencies]
 flatbuffers = "25.12.19"
@@ -16,6 +22,9 @@ default = []
 alloc = []
 heapless = ["dep:heapless"]
 
-
 [workspace]
 members = ["derive"]
+
+[workspace.package]
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/computer-whisperer/femtoflatbuffers"

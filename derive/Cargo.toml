@@ -2,6 +2,9 @@
 name = "femtoflatbuffers-derive"
 version = "0.1.0"
 edition = "2024"
+description = "Derive macros (Table, Union) for the femtoflatbuffers crate"
+license.workspace = true
+repository.workspace = true
 
 [lib]
 proc-macro = true
