@@ -14,6 +14,20 @@ pub trait ComponentEncode {
         encoder: &mut Encoder,
         table_start: u32,
     ) -> Result<Self::WorkingValue, EncodeError>;
+    /// Encode this value as a table field. The default delegates to
+    /// [`Self::value_encode`]; primitives override it to omit the slot when
+    /// the value equals the FlatBuffers default (zero/false), like the
+    /// canonical writer. The always-write `value_encode` remains the base so
+    /// the other contexts keep every value: vector elements (via
+    /// [`Self::vector_value_encode`]) and `Option<T>` payloads, where
+    /// `Some(0)` must stay distinguishable from `None`.
+    fn field_value_encode(
+        &self,
+        encoder: &mut Encoder,
+        table_start: u32,
+    ) -> Result<Self::WorkingValue, EncodeError> {
+        self.value_encode(encoder, table_start)
+    }
     fn vtable_encode(
         &self,
         encoder: &mut Encoder,
@@ -83,7 +97,11 @@ pub trait ComponentDecode {
 
 // `Default` is required so that a field omitted by the writer (absent vtable
 // entry) decodes to the FlatBuffers default — zero/false for every primitive.
-pub trait PrimitiveComponent: Default {
+// `PartialEq` is required so the encoder can omit a field that holds the
+// default. (For floats this means `-0.0 == 0.0` is omitted and reads back as
+// `+0.0`, matching the canonical flatc writer; NaN compares unequal and is
+// always written.)
+pub trait PrimitiveComponent: Default + PartialEq {
     fn alignment() -> usize;
     fn size() -> usize;
     fn do_encode(&self, encoder: &mut Encoder) -> Result<u32, EncodeError>;
@@ -258,7 +276,8 @@ impl PrimitiveComponent for f64 {
 }
 
 impl<T: PrimitiveComponent> ComponentEncode for T {
-    type WorkingValue = (u32, u32);
+    // `None` = omitted (field held the default); the vtable entry becomes 0.
+    type WorkingValue = Option<(u32, u32)>;
     fn alignment() -> usize {
         <T as PrimitiveComponent>::alignment()
     }
@@ -268,7 +287,20 @@ impl<T: PrimitiveComponent> ComponentEncode for T {
         table_start: u32,
     ) -> Result<Self::WorkingValue, EncodeError> {
         let value_offset = self.do_encode(encoder)?;
-        Ok((table_start, value_offset))
+        Ok(Some((table_start, value_offset)))
+    }
+    fn field_value_encode(
+        &self,
+        encoder: &mut Encoder,
+        table_start: u32,
+    ) -> Result<Self::WorkingValue, EncodeError> {
+        // A field at the FlatBuffers default gets no slot; the reader
+        // reconstructs the default from the zero vtable entry.
+        if *self == T::default() {
+            Ok(None)
+        } else {
+            self.value_encode(encoder, table_start)
+        }
     }
     fn vtable_encode(
         &self,
@@ -276,7 +308,14 @@ impl<T: PrimitiveComponent> ComponentEncode for T {
         _vtable_start: u32,
         working_value: &Self::WorkingValue,
     ) -> Result<(), EncodeError> {
-        encoder.encode_u16((working_value.1 - working_value.0) as u16)?;
+        match working_value {
+            Some((table_start, value_offset)) => {
+                encoder.encode_u16((value_offset - table_start) as u16)?;
+            }
+            None => {
+                encoder.encode_u16(0)?;
+            }
+        }
         Ok(())
     }
 }

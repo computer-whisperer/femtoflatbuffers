@@ -18,8 +18,7 @@ struct ScalarsTest {
 #[path = "generated/scalars_test_generated.rs"]
 mod scalars_gen;
 
-// All fields use non-default values so flatc actually stores them; femto does
-// not yet synthesize omitted-default scalars on decode.
+// All fields use non-default values so both writers actually store them.
 const SAMPLE: ScalarsTest = ScalarsTest {
     f: 1.5,
     d: -2.25,
@@ -112,8 +111,8 @@ fn decode_flatc_omitting_interior_defaults() {
 
 #[test]
 fn femto_round_trip_with_defaults() {
-    // femto always writes every non-Option field, so a default-valued field
-    // (b: false, i: 0) round-trips through femto's own encode/decode.
+    // Like the canonical writer, femto omits default-valued fields (f: 0.0,
+    // b: false, i: 0); they round-trip via the zero vtable entries.
     let original = ScalarsTest {
         f: 0.0,
         d: 3.0,
@@ -128,4 +127,36 @@ fn femto_round_trip_with_defaults() {
 
     let decoded = ScalarsTest::decode(&Decoder::new(encoded)).unwrap();
     assert_eq!(decoded, original);
+}
+
+#[test]
+fn femto_omits_default_fields() {
+    let encode = |t: &ScalarsTest| {
+        let mut buffer = [0u8; 256];
+        let mut encoder = femtoflatbuffers::Encoder::new(&mut buffer);
+        t.encode(&mut encoder).unwrap();
+        encoder.done().len()
+    };
+
+    let all_default = ScalarsTest {
+        f: 0.0,
+        d: 0.0,
+        b: false,
+        i: 0,
+    };
+
+    // Omitted fields take no table-body space, so the all-default encoding
+    // must be strictly smaller than the all-set one.
+    assert!(encode(&all_default) < encode(&SAMPLE));
+
+    // And the omitting output still reads back correctly through flatc.
+    let mut buffer = [0u8; 256];
+    let mut encoder = femtoflatbuffers::Encoder::new(&mut buffer);
+    all_default.encode(&mut encoder).unwrap();
+    let encoded = encoder.done();
+    let decoded = scalars_gen::scalars_test::root_as_scalars_test(encoded).unwrap();
+    assert_eq!(decoded.f(), 0.0);
+    assert_eq!(decoded.d(), 0.0);
+    assert!(!decoded.b());
+    assert_eq!(decoded.i(), 0);
 }

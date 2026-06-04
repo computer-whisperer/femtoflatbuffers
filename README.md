@@ -82,7 +82,11 @@ variable-size data end up in the right regions of the buffer:
 1. **`value_encode`** — lay out the field's slot in the fixed table region.
    Primitives write their value inline here; tables/vectors/strings write a 4-byte
    placeholder that will later hold a forward offset. Returns a "working value"
-   carrying the offsets needed by later phases.
+   carrying the offsets needed by later phases. Like the canonical writer, a
+   scalar field equal to the FlatBuffers default (zero/false) gets no slot at
+   all — its vtable entry is 0 and the reader reconstructs the default. This
+   applies only to plain table fields: vector elements and `Option<T>` payloads
+   (`Some(0)` ≠ `None`) are always written.
 2. **`vtable_encode`** — write this field's `u16` entry in the vtable (the field's
    offset within the table, or `0` if absent).
 3. **`post_encode`** — append variable-length payloads (nested table bodies,
@@ -134,12 +138,12 @@ This crate was written pre-documentation and has rough edges. As of this review:
 - **Vtables are not deduplicated.** The canonical format reuses one vtable across
   identical tables; here every table emits its own. Output is still valid, just
   larger.
-- **Defaults are not omitted on encode.** femto always writes every non-`Option`
-  field, even at the schema default, where the canonical writer omits it. Output
-  is valid (and decodes fine), just larger. *Decoding* an omitted field is
-  handled correctly: a zero vtable entry or a truncated vtable yields the
-  type's default (zero/false) for scalars, `None` for `Option<T>`, and an empty
-  collection for vectors/strings.
+- **`-0.0` encodes as omitted.** Default-valued scalar fields are omitted on
+  encode (see Design), and `-0.0 == 0.0`, so a negative-zero float reads back
+  as `+0.0`. flatc's writer behaves the same way. (NaN compares unequal to the
+  default and is always written.) Decoding an omitted field yields the type's
+  default: zero/false for scalars, `None` for `Option<T>`, an empty collection
+  for vectors/strings.
 - **Only the implicit zero/false default is supported.** Schemas that declare a
   non-zero scalar default cannot be expressed (there is no schema annotation in
   the Rust-as-schema model), so an omitted field always decodes to zero/false.

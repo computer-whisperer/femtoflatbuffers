@@ -88,6 +88,35 @@ fn femto_round_trip() {
 }
 
 #[test]
+fn vector_elements_with_zeros_round_trip() {
+    // Default omission applies to table fields, never vector elements: zeros
+    // inside a vector must keep their slots.
+    let test = VecScalarsTest {
+        a: 0,
+        b: vec![0, 1, 0],
+        c: vec![0, 0, 0],
+        d: vec![0.0, -2.25],
+    };
+
+    let mut buffer = [0u8; 1024];
+    let mut encoder = femtoflatbuffers::Encoder::new(&mut buffer);
+    test.encode(&mut encoder).unwrap();
+    let encoded = encoder.done();
+
+    let decoded = VecScalarsTest::decode(&Decoder::new(encoded)).unwrap();
+    assert_eq!(decoded, test);
+
+    // The official verifier + reader agree on the zero-bearing vectors.
+    let via_flatc =
+        flatbuffers::root::<vec_scalars_gen::vec_scalars_test::VecScalarsTest>(encoded).unwrap();
+    assert_eq!(
+        via_flatc.b().unwrap().iter().collect::<Vec<_>>(),
+        vec![0, 1, 0]
+    );
+    assert_eq!(via_flatc.c().unwrap().bytes(), &[0, 0, 0]);
+}
+
+#[test]
 fn femto_round_trip_empty_vectors() {
     let test = VecScalarsTest {
         a: 5,

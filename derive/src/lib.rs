@@ -147,7 +147,7 @@ fn do_encode_table(data: &Data) -> TokenStream {
                     let field_name = field.ident.as_ref().unwrap();
                     let working_value_name = format_ident!("{}_working_value", field_name);
                     fields_encode.push(quote! {
-                        let #working_value_name = femtoflatbuffers::ComponentEncode::value_encode(&self.#field_name, encoder, #table_start_ident)?;
+                        let #working_value_name = femtoflatbuffers::ComponentEncode::field_value_encode(&self.#field_name, encoder, #table_start_ident)?;
                     });
                     offsets_encode.push(quote! {
                         femtoflatbuffers::ComponentEncode::vtable_encode(&self.#field_name, encoder, #vtable_start_ident, &#working_value_name)?;

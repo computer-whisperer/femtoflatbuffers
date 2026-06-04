@@ -71,6 +71,25 @@ fn option_encode_femto_decode_flatc() {
 }
 
 #[test]
+fn option_some_zero_round_trips() {
+    // Some(0) must stay distinguishable from None: default omission applies
+    // to plain fields, not Option payloads.
+    let test = OptionalTest {
+        a: Some(0),
+        b: 0,
+        c: None,
+    };
+
+    let mut buffer = [0u8; 256];
+    let mut encoder = femtoflatbuffers::Encoder::new(&mut buffer);
+    test.encode(&mut encoder).unwrap();
+    let encoded = encoder.done();
+
+    let decoded = OptionalTest::decode(&Decoder::new(encoded)).unwrap();
+    assert_eq!(decoded, test);
+}
+
+#[test]
 fn option_encode_flatc_decode_femto() {
     // flatc omits default-valued fields, so only `b` gets a vtable entry; the
     // omitted `a`/`c` must decode as None.
