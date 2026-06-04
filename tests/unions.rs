@@ -110,6 +110,30 @@ fn none_decode_from_flatc() {
 }
 
 #[test]
+fn out_of_range_type_byte_errors() {
+    // A union type byte beyond the declared variants (here: 9) must decode to
+    // InvalidData, not panic or misattribute the value to some variant.
+    let mut builder = flatbuffers::FlatBufferBuilder::new();
+    let encoded = {
+        let mut table_builder = test::test::TestBuilder::new(&mut builder);
+        table_builder.add_a(1);
+        let value = table_builder.finish().as_union_value();
+        let mut tb = test::test::UnionTestBuilder::new(&mut builder);
+        tb.add_a_type(test::test::TestUnion(9));
+        tb.add_a(value);
+        tb.add_b(3);
+        let table = tb.finish();
+        builder.finish(table, None);
+        builder.finished_data()
+    };
+
+    assert!(matches!(
+        UnionTest::decode(&Decoder::new(encoded)),
+        Err(femtoflatbuffers::DecodeError::InvalidData)
+    ));
+}
+
+#[test]
 fn none_round_trips_through_femto() {
     let test = UnionTest {
         a: TestUnion::NONE,

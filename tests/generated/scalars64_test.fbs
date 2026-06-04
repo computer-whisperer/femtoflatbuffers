@@ -1,0 +1,10 @@
+namespace Scalars64Test;
+
+table Scalars64Test {
+  a: ubyte;
+  b: ulong;
+  c: long;
+  d: uint;
+}
+
+root_type Scalars64Test;

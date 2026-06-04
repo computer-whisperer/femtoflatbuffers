@@ -1,8 +1,9 @@
-//! Decoder robustness against malformed/adversarial input. The contract: for any
-//! byte slice, `decode` returns `Ok`/`Err` but never panics, never overflows the
-//! stack, and never makes an unbounded allocation. These tests feed truncated and
-//! mutated buffers and rely on the fact that a panic (or OOM/stack overflow) in a
-//! test aborts it -> the test failing.
+//! Robustness on both sides of the wire. Decode: for any byte slice, `decode`
+//! returns `Ok`/`Err` but never panics, never overflows the stack, and never
+//! makes an unbounded allocation. These tests feed truncated and mutated buffers
+//! and rely on the fact that a panic (or OOM/stack overflow) in a test aborts
+//! it -> the test failing. Encode: a too-small output buffer yields
+//! `EncodeError::OutOfSpace` at every possible size, never a panic.
 #![cfg(feature = "alloc")]
 
 use femtoflatbuffers::{Decoder, Encoder, Table};
@@ -56,6 +57,27 @@ fn out_of_range_root_errors() {
     // Note: [0,0,0,0] is *not* an error -- it is a degenerate but well-formed
     // buffer (root -> offset 0, zero-size vtable) that decodes to all defaults.
     assert!(Outer::decode(&Decoder::new(&[0, 0, 0, 0])).is_ok());
+}
+
+#[test]
+fn every_undersized_encode_buffer_errors() {
+    let outer = Outer {
+        a: 0xDEAD_BEEF,
+        b: Some(Inner { x: 1, y: -2 }),
+        c: vec![Inner { x: 3, y: 4 }, Inner { x: 5, y: 6 }],
+        s: "hardening".to_string(),
+    };
+    let needed = good_buffer().len();
+    for len in 0..needed {
+        let mut buf = vec![0u8; len];
+        let mut enc = Encoder::new(&mut buf);
+        // The only assertions: it must fail (the full encoding needs `needed`
+        // bytes) and must not panic on any internal write or back-patch.
+        assert!(
+            outer.encode(&mut enc).is_err(),
+            "encode into {len}-byte buffer unexpectedly succeeded (needs {needed})"
+        );
+    }
 }
 
 #[test]
