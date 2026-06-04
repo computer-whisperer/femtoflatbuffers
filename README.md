@@ -174,7 +174,7 @@ across the feature matrix (`no-features` / `alloc` / `heapless` / `all-features`
 plus a bare-metal `no_std` build.
 
 The fixtures under `tests/generated/` are `flatc`-generated from the matching
-`*.fbs` schemas (`test`, `string_test`, `scalars_test`) and cross-check wire
+`*.fbs` schemas (`test`, `string_test`, `scalars_test`, `vec_scalars_test`) and cross-check wire
 compatibility against the official `flatbuffers` crate in both directions. They
 live in a subdirectory so cargo does not treat them as standalone test binaries,
 and the `#[path]` includes silence lints on them. Note that `cargo fmt` reformats

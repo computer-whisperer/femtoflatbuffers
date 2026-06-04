@@ -62,6 +62,21 @@ impl<'a> Encoder<'a> {
         Ok(())
     }
 
+    /// Pad so that a vector written next has its *elements* `elem_align`ed:
+    /// the u32 length prefix goes at `used_bytes`, elements at `used_bytes + 4`,
+    /// so we pad until `used_bytes + 4` is a multiple of `elem_align`. Without
+    /// this, an 8-byte element would self-align and open a gap after the length
+    /// prefix, which readers (which assume elements start at `start + 4`) would
+    /// misparse.
+    pub fn pad_for_vector(&mut self, elem_align: usize) -> Result<(), EncodeError> {
+        let padding = (elem_align - (self.used_bytes + 4) % elem_align) % elem_align;
+        if self.used_bytes + padding > self.buffer.len() {
+            return Err(EncodeError::OutOfSpace);
+        }
+        self.used_bytes += padding;
+        Ok(())
+    }
+
     pub fn encode_u64(&mut self, value: u64) -> Result<u32, EncodeError> {
         self.pad_to_align(8)?;
         if self.buffer.len() - self.used_bytes < 8 {

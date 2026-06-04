@@ -54,7 +54,31 @@ fn string_of<const N: usize>(s: &str) -> heapless::String<N> {
     out
 }
 
+// Wire-compatible with the [ulong] field of vec_scalars_test.fbs; exercises
+// vector-element alignment (8-byte elements must land at `start + 4`).
+#[derive(Table, Debug, PartialEq)]
+struct VecU64Test {
+    a: u32,
+    b: heapless::Vec<u64, 8>,
+}
+
 // --- heapless::Vec ---------------------------------------------------------
+
+#[test]
+fn vec_u64_round_trips_aligned() {
+    let test = VecU64Test {
+        a: 1,
+        b: vec_of([0x1111_2222_3333_4444u64, 0x5555_6666_7777_8888]),
+    };
+
+    let mut buffer = [0u8; 256];
+    let mut encoder = femtoflatbuffers::Encoder::new(&mut buffer);
+    test.encode(&mut encoder).unwrap();
+    let encoded = encoder.done();
+
+    let decoded = VecU64Test::decode(&Decoder::new(encoded)).unwrap();
+    assert_eq!(decoded, test);
+}
 
 #[test]
 fn vec_encode_femto_decode_flatc() {

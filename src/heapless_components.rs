@@ -41,6 +41,9 @@ impl<T: ComponentEncode, const N: usize> ComponentEncode for heapless::vec::Vec<
         working_value: &Self::WorkingValue,
     ) -> Result<(), EncodeError> {
         if let Some((_table_start, value_offset)) = working_value {
+            // Position the length prefix so the elements land at their natural
+            // alignment immediately after it (readers assume `start + 4`).
+            encoder.pad_for_vector(<T as ComponentEncode>::alignment())?;
             let global_list_start = encoder.encode_u32(self.len() as u32)?;
 
             let mut working_values = heapless::vec::Vec::<_, N>::new();

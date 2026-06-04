@@ -1,0 +1,10 @@
+namespace VecScalarsTest;
+
+table VecScalarsTest {
+  a: uint;
+  b: [ulong];
+  c: [ubyte];
+  d: [double];
+}
+
+root_type VecScalarsTest;

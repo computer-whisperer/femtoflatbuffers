@@ -2,6 +2,13 @@ use crate::{DecodeError, Decoder, EncodeError, Encoder};
 
 pub trait ComponentEncode {
     type WorkingValue;
+    /// Alignment of this type when stored as a vector element. Scalars override
+    /// with their natural alignment; everything else (tables, strings, unions)
+    /// is stored as a 4-byte uoffset, hence the default. `Vec` encoders use this
+    /// to position the length prefix so the elements land aligned.
+    fn alignment() -> usize {
+        4
+    }
     fn value_encode(
         &self,
         encoder: &mut Encoder,
@@ -232,6 +239,9 @@ impl PrimitiveComponent for f64 {
 
 impl<T: PrimitiveComponent> ComponentEncode for T {
     type WorkingValue = (u32, u32);
+    fn alignment() -> usize {
+        <T as PrimitiveComponent>::alignment()
+    }
     fn value_encode(
         &self,
         encoder: &mut Encoder,
@@ -307,6 +317,9 @@ impl<T: PrimitiveComponent> ComponentDecode for T {
 
 impl<T: ComponentEncode> ComponentEncode for Option<T> {
     type WorkingValue = Option<T::WorkingValue>;
+    fn alignment() -> usize {
+        T::alignment()
+    }
     fn value_encode(
         &self,
         encoder: &mut Encoder,
@@ -462,6 +475,9 @@ impl<T: ComponentEncode> ComponentEncode for alloc::vec::Vec<T> {
         working_value: &Self::WorkingValue,
     ) -> Result<(), EncodeError> {
         if let Some((_table_start, value_offset)) = working_value {
+            // Position the length prefix so the elements land at their natural
+            // alignment immediately after it (readers assume `start + 4`).
+            encoder.pad_for_vector(<T as ComponentEncode>::alignment())?;
             let global_list_start = encoder.encode_u32(self.len() as u32)?;
 
             let mut working_values = alloc::vec::Vec::with_capacity(self.len());
