@@ -239,6 +239,11 @@ pub fn flatbuffers_union_derive(input: proc_macro::TokenStream) -> proc_macro::T
                 // Variant 0 is the FlatBuffers `NONE` placeholder: type = 0, value
                 // omitted. Encode it as two absent vtable slots (handled by the `_`
                 // fallbacks below) and round-trip it as this unit variant.
+                if !variant.fields.is_empty() {
+                    panic!(
+                        "the first variant of a Union is the FlatBuffers NONE placeholder and must have no fields"
+                    );
+                }
                 let arm = format_ident!("{}_arm", variant_ident);
                 encode_working_value_enum_arms.push(quote! { #arm });
                 decode_working_value_enum_arms.push(quote! { #arm });
@@ -257,6 +262,11 @@ pub fn flatbuffers_union_derive(input: proc_macro::TokenStream) -> proc_macro::T
                 if variant.fields.is_empty() {
                     // Skip for now
                 } else {
+                    if variant.fields.len() > 1 {
+                        // Without this the generated match patterns fail with a
+                        // confusing E0023 pointing at the derive attribute.
+                        panic!("Union variants must wrap exactly one table type");
+                    }
                     let variant_field = variant.fields.iter().next().unwrap();
                     let variant_type = &variant_field.ty;
                     let enum_arm_ident = format_ident!("{}_arm", variant_ident);

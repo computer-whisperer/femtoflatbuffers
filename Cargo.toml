@@ -2,6 +2,7 @@
 name = "femtoflatbuffers"
 version = "0.1.0"
 edition = "2024"
+rust-version.workspace = true
 description = "Tiny no_std, allocation-optional FlatBuffers encoder/decoder driven by derive macros instead of a schema compiler"
 readme = "README.md"
 license.workspace = true
@@ -28,3 +29,9 @@ members = ["derive"]
 [workspace.package]
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/computer-whisperer/femtoflatbuffers"
+# Bounded by heapless 0.9 (rustc 1.87); the crate itself needs edition 2024 (1.85).
+rust-version = "1.87"
+
+# Document the alloc/heapless items on docs.rs too.
+[package.metadata.docs.rs]
+all-features = true

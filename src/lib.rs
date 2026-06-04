@@ -21,6 +21,7 @@ pub use femtoflatbuffers_derive::{Table, Union};
 pub use table::Table;
 
 #[derive(thiserror::Error, Debug)]
+#[non_exhaustive]
 pub enum EncodeError {
     #[error("Not enough space in buffer")]
     OutOfSpace,
@@ -29,6 +30,7 @@ pub enum EncodeError {
 }
 
 #[derive(thiserror::Error, Debug)]
+#[non_exhaustive]
 pub enum DecodeError {
     #[error("Invalid data")]
     InvalidData,
@@ -43,6 +45,12 @@ pub enum DecodeError {
 /// Number of recently written vtables remembered for deduplication.
 const VTABLE_CACHE_SIZE: usize = 16;
 
+/// Forward bump-writer over a caller-owned buffer. Construct with
+/// [`Encoder::new`], pass to [`Table::encode`], and take the filled prefix with
+/// [`Encoder::done`]. The individual `encode_*`/`pad_*`/`finish_vtable` methods
+/// are wire-level building blocks for `#[derive(Table)]`-generated code, not a
+/// stable user-facing API; in particular the `*_at` back-patching variants
+/// panic (rather than erroring) on an out-of-range offset.
 pub struct Encoder<'a> {
     buffer: &'a mut [u8],
     used_bytes: usize,
@@ -223,6 +231,10 @@ impl<'a> Encoder<'a> {
     }
 }
 
+/// Bounds-checked reader over a byte slice. Construct with [`Decoder::new`] and
+/// pass to [`Table::decode`]. The offset-level `decode_*`/`follow_*` methods are
+/// building blocks for `#[derive(Table)]`-generated code, not a stable
+/// user-facing API; all of them return `Err` (never panic) on bad input.
 pub struct Decoder<'a> {
     buffer: &'a [u8],
     /// Current table-nesting depth; bounds recursion (see [`Decoder::enter_nested`]).

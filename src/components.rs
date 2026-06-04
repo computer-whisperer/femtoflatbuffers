@@ -374,6 +374,11 @@ impl<T: PrimitiveComponent> ComponentDecode for T {
     }
 }
 
+// NOTE: `Option<T>` assumes the inner type occupies exactly one vtable slot
+// (the `None` arms write/skip a single entry). That holds for every supported
+// field type except unions, which occupy two slots — `Option<Union>` would
+// produce a layout flatc misparses, and is unsupported. A union field is
+// already optional through its `NONE` variant.
 impl<T: ComponentEncode> ComponentEncode for Option<T> {
     type WorkingValue = Option<T::WorkingValue>;
     fn alignment() -> usize {

@@ -168,6 +168,11 @@ This crate was written pre-documentation and has rough edges. As of this review:
   is omitted. Data-less variants *beyond* `NONE` are still skipped by the derive
   (encoding them errors); FlatBuffers union members are always tables, so this
   only affects malformed enums.
+- **`Option<Union>` fields are unsupported.** A union field is already optional
+  — its `NONE` variant is the absent case — so wrap nothing: use the union type
+  directly. (`Option`'s absent arm writes one vtable slot but a union occupies
+  two, so an `Option<Union>` field round-trips through femto but produces a
+  layout `flatc` readers misparse.)
 - **Nested vectors are unsupported** (matches a FlatBuffers format restriction —
   wrap the inner vector in a table).
 - **Vectors of unions are unsupported**, even though recent FlatBuffers versions
