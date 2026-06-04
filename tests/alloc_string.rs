@@ -2,7 +2,6 @@
 //! compatibility against the official `flatbuffers` crate in both directions.
 #![cfg(feature = "alloc")]
 
-use femtoflatbuffers::table::Table;
 use femtoflatbuffers::{Decoder, Table};
 
 // Wire-compatible with the `StringTest` table in tests/string_test.fbs

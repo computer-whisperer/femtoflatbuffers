@@ -3,7 +3,6 @@
 //! the official `flatbuffers` crate in both directions.
 #![cfg(feature = "heapless")]
 
-use femtoflatbuffers::table::Table;
 use femtoflatbuffers::{Decoder, Table};
 
 #[derive(Table, Debug)]

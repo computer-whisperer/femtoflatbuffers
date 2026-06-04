@@ -1,4 +1,3 @@
-use femtoflatbuffers::table::Table;
 use femtoflatbuffers::{Decoder, Table, Union};
 
 #[derive(Table, Debug)]

@@ -5,7 +5,6 @@
 //! test aborts it -> the test failing.
 #![cfg(feature = "alloc")]
 
-use femtoflatbuffers::table::Table;
 use femtoflatbuffers::{Decoder, Encoder, Table};
 
 #[derive(Table, Debug)]

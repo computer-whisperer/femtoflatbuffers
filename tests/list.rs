@@ -1,7 +1,6 @@
 //! alloc `Vec<T>` field tests, cross-checked against the `flatbuffers` crate.
 #![cfg(feature = "alloc")]
 
-use femtoflatbuffers::table::Table;
 use femtoflatbuffers::{Decoder, Table};
 
 #[derive(Table, Debug)]

@@ -37,7 +37,8 @@ assert_eq!(back.level, 7);
 The output of `encode` is byte-compatible with a buffer produced by the official
 `flatc`-generated code for the equivalent schema, and vice versa. The test suite
 cross-checks both directions against the `flatbuffers` crate (see
-[`tests/`](tests/) and [`tests/test.fbs`](tests/test.fbs)).
+[`tests/`](tests/) and the `.fbs` schemas under
+[`tests/generated/`](tests/generated/)).
 
 ## Why
 
@@ -118,7 +119,8 @@ alloc`. Dependencies are kept `no_std` too (`thiserror` is used with
 - Nested tables via `#[derive(Table)]`.
 - Unions via `#[derive(Union)]` on an enum whose first variant is the `NONE`
   marker and whose remaining variants each wrap a single table type.
-- Vectors: `Vec<T>` (`alloc`) or `heapless::Vec<T, N>` (`heapless`).
+- Vectors of scalars or tables: `Vec<T>` (`alloc`) or `heapless::Vec<T, N>`
+  (`heapless`).
 - Strings: `String` (`alloc`) or `heapless::String<N>` (`heapless`).
 
 ## Known issues & limitations
@@ -157,6 +159,15 @@ This crate was written pre-documentation and has rough edges. As of this review:
   only affects malformed enums.
 - **Nested vectors are unsupported** (matches a FlatBuffers format restriction —
   wrap the inner vector in a table).
+- **Vectors of strings and vectors of unions are unsupported**, even though the
+  FlatBuffers format allows `[string]` (and, in recent versions, union vectors).
+  Decoding such a field fails with `UnsupportedFeature`; only vectors of scalars
+  and tables work. Wrap the string in a single-field table as a workaround.
+- **FlatBuffers `struct`s (fixed-size inline records) are not supported** — there
+  is no way to declare one; every `#[derive(Table)]` type is a table.
+- **Scalar enums (e.g. `enum Color: byte`) are not expressible** — use the
+  underlying integer type in the Rust struct; `#[derive(Union)]` is only for
+  FlatBuffers unions.
 
 ## Development
 

@@ -1,4 +1,7 @@
 #![no_std]
+// Reuse the README as the crate docs; its quick-start example runs as a doctest,
+// so the README cannot silently rot.
+#![doc = include_str!("../README.md")]
 
 #[cfg(feature = "alloc")]
 extern crate alloc;
@@ -12,7 +15,10 @@ pub mod table;
 use core::cell::Cell;
 
 pub use components::{ComponentDecode, ComponentEncode};
+// The `Table` trait and the `Table` derive macro share a name in different
+// namespaces (serde-style), so `use femtoflatbuffers::Table` imports both.
 pub use femtoflatbuffers_derive::{Table, Union};
+pub use table::Table;
 
 #[derive(thiserror::Error, Debug)]
 pub enum EncodeError {

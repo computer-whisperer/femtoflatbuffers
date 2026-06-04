@@ -2,7 +2,6 @@
 //! wire compatibility against the official `flatbuffers` crate in both
 //! directions.
 
-use femtoflatbuffers::table::Table;
 use femtoflatbuffers::{Decoder, Table};
 
 // Wire-compatible with the `ScalarsTest` table in tests/scalars_test.fbs

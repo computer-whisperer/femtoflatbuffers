@@ -5,7 +5,6 @@
 //! `flatbuffers::root` runs the official verifier, which checks exactly that.
 #![cfg(feature = "alloc")]
 
-use femtoflatbuffers::table::Table;
 use femtoflatbuffers::{Decoder, Table};
 
 // Wire-compatible with tests/generated/vec_scalars_test.fbs.
