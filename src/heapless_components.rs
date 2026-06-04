@@ -48,13 +48,13 @@ impl<T: ComponentEncode, const N: usize> ComponentEncode for heapless::vec::Vec<
 
             let mut working_values = heapless::vec::Vec::<_, N>::new();
             for x in self.iter() {
-                let working_value = x.value_encode(encoder, global_list_start)?;
+                let working_value = x.vector_value_encode(encoder, global_list_start)?;
                 // Cannot overflow: `working_values` and `self` share capacity N.
                 let _ = working_values.push(working_value);
             }
 
             for (working_value, x) in working_values.into_iter().zip(self.iter()) {
-                x.post_encode(encoder, &working_value)?;
+                x.vector_post_encode(encoder, &working_value)?;
             }
 
             encoder.encode_i32_at(*value_offset, (global_list_start - value_offset) as i32)?;
@@ -183,12 +183,42 @@ impl<const N: usize> ComponentEncode for heapless::string::String<N> {
             Ok(())
         }
     }
+
+    fn vector_value_encode(
+        &self,
+        encoder: &mut Encoder,
+        vector_start: u32,
+    ) -> Result<Self::WorkingValue, EncodeError> {
+        // Unlike a table field, an empty string still occupies its element slot.
+        let value_offset = encoder.encode_i32(0)?;
+        Ok(Some((vector_start, value_offset)))
+    }
+}
+
+/// Decode a string body (`[u32 len][bytes]`) at `string_offset`. The capacity
+/// is bounded by the const N, so no work-budget check is needed; the loop is
+/// capped at N regardless of the claimed length. Like heapless::Vec, an
+/// over-long value is truncated at N bytes; a truncation that splits a UTF-8
+/// sequence fails validation.
+#[cfg(feature = "heapless")]
+fn decode_string_body<const N: usize>(
+    decoder: &Decoder,
+    string_offset: u32,
+) -> Result<heapless::string::String<N>, DecodeError> {
+    let vector_len = decoder.decode_u32(string_offset)?;
+    let mut bytes = heapless::vec::Vec::<u8, N>::new();
+    for idx in 0..vector_len.min(N as u32) {
+        let byte_offset = Decoder::vector_element_offset(string_offset, idx as usize, 1)?;
+        // Cannot overflow: the loop is bounded by `.min(N)`.
+        let _ = bytes.push(decoder.decode_u8(byte_offset)?);
+    }
+    heapless::string::String::from_utf8(bytes).map_err(|_| DecodeError::InvalidData)
 }
 
 #[cfg(feature = "heapless")]
 impl<const N: usize> ComponentDecode for heapless::string::String<N> {
     type WorkingValue = (u32, u16);
-    type VectorWorkingValue = (); // Nested vectors are not supported by flatbuffers
+    type VectorWorkingValue = Self::WorkingValue;
 
     fn vtable_decode(
         decoder: &Decoder,
@@ -206,45 +236,42 @@ impl<const N: usize> ComponentDecode for heapless::string::String<N> {
             Ok(heapless::string::String::new())
         } else {
             let field_offset = Decoder::offset_add(working_value.0, working_value.1 as u32)?;
-            let vector_offset = decoder.follow_offset(field_offset)?;
-            let vector_len = decoder.decode_u32(vector_offset)?;
-            // The capacity is bounded by the const N, so no work-budget check is
-            // needed; the loop is capped at N regardless of the claimed length.
-            // Like heapless::Vec, an over-long value is truncated at N bytes; a
-            // truncation that splits a UTF-8 sequence fails validation below.
-            let mut bytes = heapless::vec::Vec::<u8, N>::new();
-            for idx in 0..vector_len.min(N as u32) {
-                let byte_offset = Decoder::vector_element_offset(vector_offset, idx as usize, 1)?;
-                // Cannot overflow: the loop is bounded by `.min(N)`.
-                let _ = bytes.push(decoder.decode_u8(byte_offset)?);
-            }
-            heapless::string::String::from_utf8(bytes).map_err(|_| DecodeError::InvalidData)
+            let string_offset = decoder.follow_offset(field_offset)?;
+            decode_string_body(decoder, string_offset)
         }
     }
 
     fn vector_vtable_decode(
-        _decoder: &Decoder,
-        _table_start: u32,
-        _vtable_entry: u32,
+        decoder: &Decoder,
+        table_start: u32,
+        vtable_entry: u32,
     ) -> Result<(Self::VectorWorkingValue, u32), DecodeError> {
-        Err(DecodeError::InvalidData)
+        let vtable_value = decoder.vtable_entry_at(table_start, vtable_entry)?;
+        Ok(((table_start, vtable_value), vtable_entry + 2))
     }
 
     fn vector_len_decode(
-        _decoder: &Decoder,
-        _working_value: &Self::VectorWorkingValue,
+        decoder: &Decoder,
+        working_value: &Self::VectorWorkingValue,
     ) -> Result<usize, DecodeError> {
-        Err(DecodeError::InvalidData)
+        let field_offset = Decoder::offset_add(working_value.0, working_value.1 as u32)?;
+        let vector_offset = decoder.follow_offset(field_offset)?;
+        Ok(decoder.decode_u32(vector_offset)? as usize)
     }
 
     fn vector_value_decode(
-        _decoder: &Decoder,
-        _working_value: &Self::VectorWorkingValue,
-        _idx: usize,
+        decoder: &Decoder,
+        working_value: &Self::VectorWorkingValue,
+        idx: usize,
     ) -> Result<Self, DecodeError>
     where
         Self: Sized,
     {
-        Err(DecodeError::InvalidData)
+        // Elements are uoffsets to the string bodies.
+        let field_offset = Decoder::offset_add(working_value.0, working_value.1 as u32)?;
+        let vector_offset = decoder.follow_offset(field_offset)?;
+        let element_offset = Decoder::vector_element_offset(vector_offset, idx, 4)?;
+        let string_offset = decoder.follow_offset(element_offset)?;
+        decode_string_body(decoder, string_offset)
     }
 }

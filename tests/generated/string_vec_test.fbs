@@ -1,0 +1,8 @@
+namespace StringVecTest;
+
+table StringVecTest {
+  a: uint;
+  b: [string];
+}
+
+root_type StringVecTest;

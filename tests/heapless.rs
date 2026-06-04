@@ -150,6 +150,58 @@ fn vec_empty_round_trips() {
     assert!(decoded.b.is_empty());
 }
 
+// --- vectors of strings -----------------------------------------------------
+
+// Wire-compatible with tests/generated/string_vec_test.fbs (a: uint, b: [string]).
+#[derive(Table, Debug, PartialEq)]
+struct StringVecTest {
+    a: u32,
+    b: heapless::Vec<heapless::String<16>, 4>,
+}
+
+#[allow(warnings, clippy::all)]
+#[path = "generated/string_vec_test_generated.rs"]
+mod string_vec_gen;
+
+#[test]
+fn string_vec_encode_femto_decode_flatc() {
+    let test = StringVecTest {
+        a: 1,
+        // The empty element matters: as a table field an empty string is
+        // omitted, but as a vector element it must still occupy its slot.
+        b: vec_of([string_of("hello"), string_of(""), string_of("世界")]),
+    };
+
+    let mut buffer = [0u8; 512];
+    let mut encoder = femtoflatbuffers::Encoder::new(&mut buffer);
+    test.encode(&mut encoder).unwrap();
+    let encoded = encoder.done();
+
+    let decoded =
+        flatbuffers::root::<string_vec_gen::string_vec_test::StringVecTest>(encoded).unwrap();
+    let b = decoded.b().unwrap();
+    assert_eq!(b.len(), 3);
+    assert_eq!(b.get(0), "hello");
+    assert_eq!(b.get(1), "");
+    assert_eq!(b.get(2), "世界");
+}
+
+#[test]
+fn string_vec_round_trips() {
+    let test = StringVecTest {
+        a: 1,
+        b: vec_of([string_of("hello"), string_of(""), string_of("世界")]),
+    };
+
+    let mut buffer = [0u8; 512];
+    let mut encoder = femtoflatbuffers::Encoder::new(&mut buffer);
+    test.encode(&mut encoder).unwrap();
+    let encoded = encoder.done();
+
+    let decoded = StringVecTest::decode(&Decoder::new(encoded)).unwrap();
+    assert_eq!(decoded, test);
+}
+
 // --- heapless::String ------------------------------------------------------
 
 #[test]

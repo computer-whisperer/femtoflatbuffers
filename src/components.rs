@@ -27,6 +27,26 @@ pub trait ComponentEncode {
     ) -> Result<(), EncodeError> {
         Ok(())
     }
+    /// Encode this value as a vector element rather than a table field. The
+    /// default delegates to the table-field methods, which is right for
+    /// scalars (inline value) and tables (always a placeholder uoffset).
+    /// Strings override it: an empty string is an *omitted* table field but
+    /// must still occupy its element slot inside a vector.
+    fn vector_value_encode(
+        &self,
+        encoder: &mut Encoder,
+        vector_start: u32,
+    ) -> Result<Self::WorkingValue, EncodeError> {
+        self.value_encode(encoder, vector_start)
+    }
+    /// Vector-element counterpart of [`Self::post_encode`].
+    fn vector_post_encode(
+        &self,
+        encoder: &mut Encoder,
+        working_value: &Self::WorkingValue,
+    ) -> Result<(), EncodeError> {
+        self.post_encode(encoder, working_value)
+    }
 }
 
 pub trait ComponentDecode {
@@ -482,12 +502,12 @@ impl<T: ComponentEncode> ComponentEncode for alloc::vec::Vec<T> {
 
             let mut working_values = alloc::vec::Vec::with_capacity(self.len());
             for x in self.iter() {
-                let working_value = x.value_encode(encoder, global_list_start)?;
+                let working_value = x.vector_value_encode(encoder, global_list_start)?;
                 working_values.push(working_value);
             }
 
             for (working_value, x) in working_values.into_iter().zip(self.iter()) {
-                x.post_encode(encoder, &working_value)?;
+                x.vector_post_encode(encoder, &working_value)?;
             }
 
             encoder.encode_i32_at(*value_offset, (global_list_start - value_offset) as i32)?;
@@ -617,12 +637,40 @@ impl ComponentEncode for alloc::string::String {
             Ok(())
         }
     }
+
+    fn vector_value_encode(
+        &self,
+        encoder: &mut Encoder,
+        vector_start: u32,
+    ) -> Result<Self::WorkingValue, EncodeError> {
+        // Unlike a table field, an empty string still occupies its element slot.
+        let value_offset = encoder.encode_i32(0)?;
+        Ok(Some((vector_start, value_offset)))
+    }
+}
+
+/// Decode a string body (`[u32 len][bytes]`) at `string_offset`, bounding the
+/// allocation by the decoder's work budget and validating UTF-8.
+#[cfg(feature = "alloc")]
+fn decode_string_body(
+    decoder: &Decoder,
+    string_offset: u32,
+) -> Result<alloc::string::String, DecodeError> {
+    let vector_len = decoder.decode_u32(string_offset)?;
+    // Bound the length by the work budget before allocating.
+    decoder.consume_budget(vector_len)?;
+    let mut bytes = alloc::vec::Vec::with_capacity(vector_len as usize);
+    for idx in 0..vector_len {
+        let byte_offset = Decoder::vector_element_offset(string_offset, idx as usize, 1)?;
+        bytes.push(decoder.decode_u8(byte_offset)?);
+    }
+    alloc::string::String::from_utf8(bytes).map_err(|_| DecodeError::InvalidData)
 }
 
 #[cfg(feature = "alloc")]
 impl ComponentDecode for alloc::string::String {
     type WorkingValue = (u32, u16);
-    type VectorWorkingValue = (); // Strings cannot be nested inside vectors as a working value
+    type VectorWorkingValue = Self::WorkingValue;
 
     fn vtable_decode(
         decoder: &Decoder,
@@ -640,42 +688,42 @@ impl ComponentDecode for alloc::string::String {
             Ok(alloc::string::String::new())
         } else {
             let field_offset = Decoder::offset_add(working_value.0, working_value.1 as u32)?;
-            let vector_offset = decoder.follow_offset(field_offset)?;
-            let vector_len = decoder.decode_u32(vector_offset)?;
-            // Bound the length by the work budget before allocating.
-            decoder.consume_budget(vector_len)?;
-            let mut bytes = alloc::vec::Vec::with_capacity(vector_len as usize);
-            for idx in 0..vector_len {
-                let byte_offset = Decoder::vector_element_offset(vector_offset, idx as usize, 1)?;
-                bytes.push(decoder.decode_u8(byte_offset)?);
-            }
-            alloc::string::String::from_utf8(bytes).map_err(|_| DecodeError::InvalidData)
+            let string_offset = decoder.follow_offset(field_offset)?;
+            decode_string_body(decoder, string_offset)
         }
     }
 
     fn vector_vtable_decode(
-        _decoder: &Decoder,
-        _table_start: u32,
-        _vtable_entry: u32,
+        decoder: &Decoder,
+        table_start: u32,
+        vtable_entry: u32,
     ) -> Result<(Self::VectorWorkingValue, u32), DecodeError> {
-        Err(DecodeError::UnsupportedFeature)
+        let vtable_value = decoder.vtable_entry_at(table_start, vtable_entry)?;
+        Ok(((table_start, vtable_value), vtable_entry + 2))
     }
 
     fn vector_len_decode(
-        _decoder: &Decoder,
-        _working_value: &Self::VectorWorkingValue,
+        decoder: &Decoder,
+        working_value: &Self::VectorWorkingValue,
     ) -> Result<usize, DecodeError> {
-        Err(DecodeError::UnsupportedFeature)
+        let field_offset = Decoder::offset_add(working_value.0, working_value.1 as u32)?;
+        let vector_offset = decoder.follow_offset(field_offset)?;
+        Ok(decoder.decode_u32(vector_offset)? as usize)
     }
 
     fn vector_value_decode(
-        _decoder: &Decoder,
-        _working_value: &Self::VectorWorkingValue,
-        _idx: usize,
+        decoder: &Decoder,
+        working_value: &Self::VectorWorkingValue,
+        idx: usize,
     ) -> Result<Self, DecodeError>
     where
         Self: Sized,
     {
-        Err(DecodeError::UnsupportedFeature)
+        // Elements are uoffsets to the string bodies.
+        let field_offset = Decoder::offset_add(working_value.0, working_value.1 as u32)?;
+        let vector_offset = decoder.follow_offset(field_offset)?;
+        let element_offset = Decoder::vector_element_offset(vector_offset, idx, 4)?;
+        let string_offset = decoder.follow_offset(element_offset)?;
+        decode_string_body(decoder, string_offset)
     }
 }
