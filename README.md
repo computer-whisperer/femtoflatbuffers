@@ -97,6 +97,13 @@ The generated table layout is `[table body][vtable][nested payloads...]`, with t
 table's `soffset` pointing forward to its vtable. The root is a `u32` uoffset at
 byte 0 pointing at the root table.
 
+Vtables are trimmed of trailing absent-field entries and deduplicated: if an
+identical vtable was written recently, the new table's `soffset` points back at
+the shared copy instead. The canonical builder dedups against every prior
+vtable; femto remembers a fixed ring of the last 16 (no allocation), which
+catches the dominant case — vectors of same-shape tables. A cache miss just
+means a duplicate vtable; the output stays valid.
+
 Decoding mirrors this: `vtable_decode` locates a field's vtable entry,
 `value_decode` follows it to read the value (or chases the forward offset for
 nested/variable data), and the vector variants add length-prefixed iteration.
@@ -135,9 +142,9 @@ This crate was written pre-documentation and has rough edges. As of this review:
 - **`heapless` collections silently truncate on decode.** A vector or string
   longer than the fixed capacity `N` decodes to its first `N` elements/bytes
   (a string truncation that would split a UTF-8 sequence errors instead).
-- **Vtables are not deduplicated.** The canonical format reuses one vtable across
-  identical tables; here every table emits its own. Output is still valid, just
-  larger.
+- **Vtable deduplication is best-effort.** Only the last 16 written vtables are
+  remembered (see Design), so a message interleaving more than 16 distinct table
+  shapes can emit duplicate (valid, just redundant) vtables.
 - **`-0.0` encodes as omitted.** Default-valued scalar fields are omitted on
   encode (see Design), and `-0.0 == 0.0`, so a negative-zero float reads back
   as `+0.0`. flatc's writer behaves the same way. (NaN compares unequal to the

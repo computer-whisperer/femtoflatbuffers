@@ -40,9 +40,17 @@ pub enum DecodeError {
     ResourceLimit,
 }
 
+/// Number of recently written vtables remembered for deduplication.
+const VTABLE_CACHE_SIZE: usize = 16;
+
 pub struct Encoder<'a> {
     buffer: &'a mut [u8],
     used_bytes: usize,
+    /// Ring of absolute offsets of recently written (kept) vtables, used by
+    /// [`Encoder::finish_vtable`] to share identical vtables between tables.
+    vtable_cache: [u32; VTABLE_CACHE_SIZE],
+    vtable_cache_len: usize,
+    vtable_cache_next: usize,
 }
 
 impl<'a> Encoder<'a> {
@@ -50,6 +58,9 @@ impl<'a> Encoder<'a> {
         Self {
             buffer,
             used_bytes: 0,
+            vtable_cache: [0; VTABLE_CACHE_SIZE],
+            vtable_cache_len: 0,
+            vtable_cache_next: 0,
         }
     }
     pub fn used_bytes(&self) -> u32 {
@@ -64,6 +75,10 @@ impl<'a> Encoder<'a> {
         if self.used_bytes + padding > self.buffer.len() {
             return Err(EncodeError::OutOfSpace);
         }
+        // Zero the padding: the caller's buffer may hold arbitrary bytes, and a
+        // vtable-dedup rollback leaves stale bytes past `used_bytes`. Zeroing
+        // keeps the output deterministic.
+        self.buffer[self.used_bytes..self.used_bytes + padding].fill(0);
         self.used_bytes += padding;
         Ok(())
     }
@@ -79,7 +94,50 @@ impl<'a> Encoder<'a> {
         if self.used_bytes + padding > self.buffer.len() {
             return Err(EncodeError::OutOfSpace);
         }
+        // Zeroed for determinism; see pad_to_align.
+        self.buffer[self.used_bytes..self.used_bytes + padding].fill(0);
         self.used_bytes += padding;
+        Ok(())
+    }
+
+    /// Finish the vtable beginning at `vtable_start` for the table at
+    /// `table_start`: trim trailing zero entries (absent fields — the decoder
+    /// treats entries beyond the vtable size as absent), patch the vtable size,
+    /// and deduplicate. If an identical vtable was written recently, the
+    /// just-written copy is rolled back and the table's soffset re-pointed at
+    /// the shared one. The canonical builder dedups against *every* prior
+    /// vtable; this ring only remembers the last [`VTABLE_CACHE_SIZE`], which
+    /// catches the dominant case (vectors of same-shape tables) without
+    /// allocating. A miss just means a duplicate vtable — output stays valid.
+    pub fn finish_vtable(
+        &mut self,
+        table_start: u32,
+        vtable_start: u32,
+    ) -> Result<(), EncodeError> {
+        let vt = vtable_start as usize;
+        // Trim trailing zero entries, never the [vtable size][table size] header.
+        while self.used_bytes >= vt + 6
+            && self.buffer[self.used_bytes - 2] == 0
+            && self.buffer[self.used_bytes - 1] == 0
+        {
+            self.used_bytes -= 2;
+        }
+        let len = self.used_bytes - vt;
+        self.encode_u16_at(vtable_start, len as u16)?;
+        for i in 0..self.vtable_cache_len {
+            let cached = self.vtable_cache[i] as usize;
+            // In-bounds: cached < vt and len = used_bytes - vt, so
+            // cached + len < used_bytes. A cached vtable of a different size
+            // fails the compare at its first halfword (the size field).
+            if self.buffer[cached..cached + len] == self.buffer[vt..vt + len] {
+                self.encode_i32_at(table_start, (table_start - cached as u32) as i32)?;
+                self.used_bytes = vt;
+                return Ok(());
+            }
+        }
+        self.vtable_cache[self.vtable_cache_next] = vtable_start;
+        self.vtable_cache_next = (self.vtable_cache_next + 1) % VTABLE_CACHE_SIZE;
+        self.vtable_cache_len = (self.vtable_cache_len + 1).min(VTABLE_CACHE_SIZE);
         Ok(())
     }
 

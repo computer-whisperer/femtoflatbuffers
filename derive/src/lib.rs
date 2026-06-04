@@ -127,8 +127,9 @@ fn inner_do_table_encode(
         encoder.encode_u16((table_end - #table_start_ident) as u16)?; // Set table size
         // Set field offsets
         #(#offsets_encode)*
-        // Write the start table offset
-        encoder.encode_u16_at(#vtable_start_ident, (encoder.used_bytes() - #vtable_start_ident) as u16)?;
+        // Trim trailing absent entries, patch the vtable size, and dedup
+        // against recently written identical vtables.
+        encoder.finish_vtable(#table_start_ident, #vtable_start_ident)?;
         #(#post_encode)*
         Ok(#table_start_ident)
     }
